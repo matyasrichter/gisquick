@@ -3,6 +3,7 @@
     <div class="panel-header f-row-ac f-justify-center">
       <translate class="title">Content</translate>
     </div>
+    <ogc-processes :baseUrl="`/api/map/ogc-processes/${$store.state.project.config.name}`"/>
     <v-tabs-header :items="tabsItems" v-model="activeMainTab"/>
     <v-tabs class="f-grow" :items="tabsItems" v-model="activeMainTab">
       <template v-slot:base>
@@ -96,11 +97,12 @@ import LayersTree from './LayersTree.vue'
 import TopicsList from './TopicsList.vue'
 import MapLegend from './Legend.vue'
 import { textMatcher } from '@/ui/utils/text'
+import OgcProcesses from '../ogc-processes/OgcProcesses.vue'
 
 
 export default {
   name: 'content-panel',
-  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList },
+  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList, OgcProcesses },
   props: {
     attributeTableDisabled: Boolean
   },
