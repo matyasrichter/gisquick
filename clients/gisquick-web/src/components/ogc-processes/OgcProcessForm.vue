@@ -47,25 +47,67 @@
                 @input="updateField(name, parseNumber($event, resolveType(schema.schema)))"
               />
             </template>
-            <template v-else-if="schema.schema.type === 'object'">
-              <div class="nested-object f-col">
+            <template v-else-if="isGeometryInput(schema)">
+              <div class="geometry-field f-col">
                 <label class="field-label" v-text="fieldLabel(schema, name)"/>
-                <div class="nested-fields f-col pl-2">
-                  <template v-for="(propSchema, propName) in (schema.schema.properties || {})">
-                    <v-text-field
-                      :key="propName"
-                      :label="propSchema.title || propName"
-                      :value="(formData[name] || {})[propName]"
-                      :placeholder="propSchema.description || ''"
-                      @input="updateNestedField(name, propName, $event)"
-                    />
-                  </template>
+                <div class="geometry-pick-row f-row-ac" style="gap: 8px">
+                  <v-btn
+                    class="small"
+                    :color="activePickerField === name && activePickerMode === 'select' ? 'orange' : 'primary'"
+                    @click="activePickerField === name && activePickerMode === 'select' ? stopPicking() : startFeatureSelect(name, schema)"
+                  >
+                    {{ activePickerField === name && activePickerMode === 'select' ? 'Cancel' : 'Pick feature' }}
+                  </v-btn>
+                  <v-btn
+                    class="small outlined"
+                    :color="activePickerField === name && activePickerMode === 'draw' ? 'orange' : 'primary'"
+                    @click="activePickerField === name && activePickerMode === 'draw' ? stopPicking() : startDrawing(name, schema)"
+                  >
+                    {{ activePickerField === name && activePickerMode === 'draw' ? 'Cancel' : 'Draw' }}
+                  </v-btn>
+                  <span v-if="formData[name] && activePickerField !== name" class="geometry-summary">
+                    {{ geometrySummary(formData[name]) }}
+                  </span>
+                  <v-btn
+                    v-if="formData[name]"
+                    class="icon small flat"
+                    @click="clearGeometry(name)"
+                  >
+                    <v-icon name="x" size="14"/>
+                  </v-btn>
+                </div>
+                <div v-if="activePickerField === name && pendingFeatures.length > 1" class="feature-picker f-col mt-1">
+                  <span class="feature-picker-hint">Multiple features found — click one to use it:</span>
+                  <div
+                    v-for="(feat, i) in pendingFeatures"
+                    :key="i"
+                    class="feature-picker-item"
+                    @click="applyPendingFeature(name, schema, feat)"
+                  >
+                    {{ featureLabel(feat) }}
+                  </div>
                 </div>
               </div>
             </template>
             <template v-else-if="isBboxSchema(schema)">
               <div class="bbox-field f-col">
                 <label class="field-label" v-text="fieldLabel(schema, name)"/>
+                <div class="bbox-pick-row f-row-ac mb-1" style="gap: 8px">
+                  <v-btn
+                    class="small"
+                    :color="activePickerField === name && activePickerMode === 'bbox' ? 'orange' : 'primary'"
+                    @click="activePickerField === name && activePickerMode === 'bbox' ? stopPicking() : startBboxPick(name)"
+                  >
+                    {{ activePickerField === name && activePickerMode === 'bbox' ? 'Cancel' : 'Pick on map' }}
+                  </v-btn>
+                  <v-btn
+                    v-if="formData[name] && formData[name].some(v => v !== null)"
+                    class="icon small flat"
+                    @click="clearBbox(name)"
+                  >
+                    <v-icon name="x" size="14"/>
+                  </v-btn>
+                </div>
                 <div class="bbox-inputs f-row" style="gap: 8px">
                   <v-text-field
                     v-for="(coord, idx) in bboxLabels"
@@ -80,27 +122,19 @@
                 </div>
               </div>
             </template>
-            <template v-else-if="isGeometryInput(schema)">
-              <div class="geometry-field f-col">
+            <template v-else-if="schema.schema.type === 'object'">
+              <div class="nested-object f-col">
                 <label class="field-label" v-text="fieldLabel(schema, name)"/>
-                <div class="geometry-pick-row f-row-ac" style="gap: 8px">
-                  <v-btn
-                    class="small"
-                    :color="activePickerField === name ? 'orange' : 'primary'"
-                    @click="activePickerField === name ? stopPicking() : startPicking(name, schema)"
-                  >
-                    {{ activePickerField === name ? 'Cancel' : (formData[name] ? 'Reselect from map' : 'Select from map') }}
-                  </v-btn>
-                  <span v-if="formData[name] && activePickerField !== name" class="geometry-summary">
-                    {{ geometrySummary(formData[name]) }}
-                  </span>
-                  <v-btn
-                    v-if="formData[name]"
-                    class="icon small flat"
-                    @click="clearGeometry(name)"
-                  >
-                    <v-icon name="x" size="14"/>
-                  </v-btn>
+                <div class="nested-fields f-col pl-2">
+                  <template v-for="(propSchema, propName) in (schema.schema.properties || {})">
+                    <v-text-field
+                      :key="propName"
+                      :label="propSchema.title || propName"
+                      :value="(formData[name] || {})[propName]"
+                      :placeholder="propSchema.description || ''"
+                      @input="updateNestedField(name, propName, $event)"
+                    />
+                  </template>
                 </div>
               </div>
             </template>
@@ -123,12 +157,17 @@
 </template>
 
 <script>
+import { mapState } from 'vuex'
 import axios from 'axios'
-import Draw from 'ol/interaction/Draw'
+import Draw, { createBox } from 'ol/interaction/Draw'
 import VectorSource from 'ol/source/Vector'
 import OlVectorLayer from 'ol/layer/Vector'
 import GeoJSON from 'ol/format/GeoJSON'
 import WKT from 'ol/format/WKT'
+import Circle from 'ol/geom/Circle'
+import { fromCircle } from 'ol/geom/Polygon'
+import { unByKey } from 'ol/Observable'
+import { layersFeaturesQuery } from '@/map/featureinfo'
 
 const GEOMETRY_FORMATS = ['geojson', 'wkt', 'ewkt', 'wkb', 'ewkb']
 const WKT_FORMATS = ['wkt', 'ewkt', 'wkb', 'ewkb']
@@ -157,12 +196,16 @@ export default {
       formData: {},
       bboxLabels: ['Min X', 'Min Y', 'Max X', 'Max Y'],
       activePickerField: null,
+      activePickerMode: null,
+      pendingFeatures: [],
       _draw: null,
       _drawLayer: null,
-      _pickerDef: null
+      _pickerDef: null,
+      _selectKey: null
     }
   },
   computed: {
+    ...mapState(['project']),
     inputSchemas () {
       if (!this.processDesc?.inputs) return {}
       const inputs = this.processDesc.inputs
@@ -185,7 +228,14 @@ export default {
         .map(([name]) => name)
     },
     pickingHintText () {
-      if (!this.activePickerField || !this._pickerDef) return ''
+      if (!this.activePickerField) return ''
+      if (this.activePickerMode === 'select') {
+        return 'Click on a map feature to use its geometry'
+      }
+      if (this.activePickerMode === 'bbox') {
+        return 'Click and drag to draw a bounding box'
+      }
+      if (!this._pickerDef) return ''
       const olType = this.getOlGeometryType(this._pickerDef)
       if (olType === 'Point' || olType === 'MultiPoint') {
         return 'Click on the map to place a point'
@@ -332,9 +382,10 @@ export default {
       const schema = def.schema || {}
       return WKT_FORMATS.includes(schema.format) ? 'wkt' : 'geojson'
     },
-    startPicking (name, def) {
+    startDrawing (name, def) {
       this._cleanupPicker(false)
       this.activePickerField = name
+      this.activePickerMode = 'draw'
       this._pickerDef = def
 
       const source = new VectorSource()
@@ -355,44 +406,159 @@ export default {
           value = JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
         }
         this.$set(this.formData, name, value)
-        this._stopInteraction()
+        this._stopDrawInteraction()
       })
 
       this.$map.addInteraction(draw)
       this._draw = draw
       this.$map.getViewport().style.cursor = 'crosshair'
     },
-    _stopInteraction () {
+    _stopDrawInteraction () {
       if (this._draw) {
         this.$map.removeInteraction(this._draw)
         this._draw = null
       }
       this.activePickerField = null
+      this.activePickerMode = null
+      this._pickerDef = null
+      this.$map.getViewport().style.cursor = ''
+    },
+    startFeatureSelect (name, def) {
+      this._cleanupPicker(false)
+      this.activePickerField = name
+      this.activePickerMode = 'select'
+      this._pickerDef = def
+      this.pendingFeatures = []
+      this.$map.getViewport().style.cursor = 'crosshair'
+      this._selectKey = this.$map.on('singleclick', evt => this._onMapClick(evt, name, def))
+    },
+    async _onMapClick (evt, name, def) {
+      const { map, pixel, coordinate } = evt
+      const mapProj = map.getView().getProjection().getCode()
+      const wfsLayers = this.project.overlays.list.filter(l => l.queryable && l.visible && !l.hidden && l.attributes)
+      if (!wfsLayers.length) return
+
+      const pixelRadius = 8
+      const radius = Math.abs(map.getCoordinateFromPixel([pixel[0] + pixelRadius, pixel[1]])[0] - coordinate[0])
+      const geomFilter = { geom: fromCircle(new Circle(coordinate, radius), 6), projection: mapProj }
+      const query = layersFeaturesQuery(wfsLayers, { geomFilter })
+
+      try {
+        const config = {
+          params: { VERSION: '1.1.0', SERVICE: 'WFS', REQUEST: 'GetFeature', OUTPUTFORMAT: 'GeoJSON', MAXFEATURES: 10 },
+          headers: { 'Content-Type': 'text/xml' }
+        }
+        const { data } = await this.$http.post(this.project.config.ows_url, query, config)
+        const parser = new GeoJSON()
+        const features = parser.readFeatures(data, { featureProjection: mapProj })
+        if (features.length === 0) return
+        if (features.length === 1) {
+          this.applyPendingFeature(name, def, features[0])
+        } else {
+          this.pendingFeatures = features
+        }
+      } catch (e) {
+        console.error('Feature query failed', e)
+      }
+    },
+    applyPendingFeature (name, def, feature) {
+      const mapProj = this.$map.getView().getProjection()
+      const geom = feature.getGeometry()
+      const outputFormat = this.getOutputFormat(def)
+      let value
+      if (outputFormat === 'wkt') {
+        value = new WKT().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj })
+      } else {
+        value = JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
+      }
+      if (!this._drawLayer) {
+        const source = new VectorSource()
+        const layer = new OlVectorLayer({ source, zIndex: 999 })
+        this.$map.addLayer(layer)
+        this._drawLayer = layer
+      }
+      this._drawLayer.getSource().clear()
+      this._drawLayer.getSource().addFeature(feature.clone())
+
+      this.$set(this.formData, name, value)
+      this._stopSelectInteraction()
+      this.pendingFeatures = []
+    },
+    _stopSelectInteraction () {
+      if (this._selectKey) {
+        unByKey(this._selectKey)
+        this._selectKey = null
+      }
+      this.activePickerField = null
+      this.activePickerMode = null
       this._pickerDef = null
       this.$map.getViewport().style.cursor = ''
     },
     stopPicking () {
-      // Remove draw layer if no geometry was captured for this field
       const field = this.activePickerField
-      this._stopInteraction()
-      if (field && !this.formData[field] && this._drawLayer) {
-        this.$map.removeLayer(this._drawLayer)
-        this._drawLayer = null
+      const mode = this.activePickerMode
+      if (mode === 'select') {
+        this._stopSelectInteraction()
+      } else {
+        const val = field && this.formData[field]
+        const hadGeom = Array.isArray(val) ? val.some(v => v !== null) : !!val
+        this._stopDrawInteraction()
+        if (!hadGeom && this._drawLayer) {
+          this.$map.removeLayer(this._drawLayer)
+          this._drawLayer = null
+        }
       }
+      this.pendingFeatures = []
     },
     _cleanupPicker (removeLayer) {
       if (this._draw) {
         this.$map.removeInteraction(this._draw)
         this._draw = null
       }
+      if (this._selectKey) {
+        unByKey(this._selectKey)
+        this._selectKey = null
+      }
       if (removeLayer && this._drawLayer) {
         this.$map.removeLayer(this._drawLayer)
         this._drawLayer = null
       }
       this.activePickerField = null
+      this.activePickerMode = null
       this._pickerDef = null
+      this.pendingFeatures = []
       if (this.$map) {
         this.$map.getViewport().style.cursor = ''
+      }
+    },
+    startBboxPick (name) {
+      this._cleanupPicker(true)
+      this.activePickerField = name
+      this.activePickerMode = 'bbox'
+
+      const source = new VectorSource()
+      const layer = new OlVectorLayer({ source, zIndex: 999 })
+      this.$map.addLayer(layer)
+      this._drawLayer = layer
+
+      const draw = new Draw({ source, type: 'Circle', geometryFunction: createBox() })
+      draw.on('drawend', evt => {
+        const mapProj = this.$map.getView().getProjection()
+        const extent = evt.feature.getGeometry().clone().transform(mapProj, 'EPSG:4326').getExtent()
+        // extent is [minX, minY, maxX, maxY]
+        this.$set(this.formData, name, extent.map(v => parseFloat(v.toFixed(7))))
+        this._stopDrawInteraction()
+      })
+
+      this.$map.addInteraction(draw)
+      this._draw = draw
+      this.$map.getViewport().style.cursor = 'crosshair'
+    },
+    clearBbox (name) {
+      this.$set(this.formData, name, [null, null, null, null])
+      if (this._drawLayer) {
+        this.$map.removeLayer(this._drawLayer)
+        this._drawLayer = null
       }
     },
     clearGeometry (name) {
@@ -405,7 +571,6 @@ export default {
     geometrySummary (value) {
       if (!value) return ''
       if (typeof value === 'string') {
-        // WKT: truncate for display
         return value.length > 60 ? value.slice(0, 57) + '…' : value
       }
       if (typeof value === 'object' && value.type) {
@@ -426,6 +591,12 @@ export default {
         return type
       }
       return 'Geometry selected'
+    },
+    featureLabel (feature) {
+      const id = feature.getId() || ''
+      const props = feature.getProperties()
+      const nameKey = Object.keys(props).find(k => /^name$|^title$|^label$/i.test(k))
+      return nameKey ? `${props[nameKey]} (${id})` : id || 'Feature'
     },
     getFormValues () {
       const values = {}
@@ -508,6 +679,25 @@ export default {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .feature-picker {
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 4px;
+    overflow: hidden;
+    .feature-picker-hint {
+      font-size: 0.8em;
+      opacity: 0.65;
+      padding: 4px 8px;
+      background: rgba(0,0,0,0.04);
+    }
+    .feature-picker-item {
+      font-size: 0.85em;
+      padding: 4px 8px;
+      cursor: pointer;
+      &:hover {
+        background: rgba(33, 150, 243, 0.12);
+      }
+    }
   }
 }
 </style>
