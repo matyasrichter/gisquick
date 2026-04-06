@@ -195,9 +195,6 @@ export default {
 
 <style lang="scss" scoped>
 .ogc-processes {
-  width: 300px;
-  max-height: calc(100vh - 80px);
-  overflow-y: auto;
   gap: 12px;
   padding: 8px;
 
@@ -217,8 +214,6 @@ export default {
       padding: 8px;
       margin: 0;
       font-size: 0.85em;
-      max-height: 300px;
-      overflow: auto;
       white-space: pre-wrap;
       word-break: break-word;
     }

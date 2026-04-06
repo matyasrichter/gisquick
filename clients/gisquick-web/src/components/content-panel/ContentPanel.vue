@@ -79,6 +79,14 @@
           <map-legend :visible="visible"/>
         </scroll-area>
       </template>
+      <template v-slot:processing>
+        <scroll-area>
+          <ogc-processes
+            :base-url="ogcBaseUrl"
+            @executed="$emit('executed', $event)"
+          />
+        </scroll-area>
+      </template>
       <template v-slot:results>
         <scroll-area>
           <div class="result-layers">
@@ -116,12 +124,13 @@ import BaseLayersTree from './BaseLayersTree.vue'
 import LayersTree from './LayersTree.vue'
 import TopicsList from './TopicsList.vue'
 import MapLegend from './Legend.vue'
+import OgcProcesses from '@/components/ogc-processes/OgcProcesses.vue'
 import { textMatcher } from '@/ui/utils/text'
 
 
 export default {
   name: 'content-panel',
-  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList },
+  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList, OgcProcesses },
   props: {
     attributeTableDisabled: Boolean
   },
@@ -161,6 +170,7 @@ export default {
         this.hasBaseLayers && { key: 'base', icon: 'base-layer', label: this.$gettext('Base Layers') },
         { key: 'overlays', icon: 'overlays', label: this.$gettext('Overlay Layers') },
         { key: 'legend', icon: 'legend', label: this.$gettext('Legend') },
+        { key: 'processing', icon: 'tools', label: this.$gettext('Processing') },
         this.resultLayers.length > 0 && { key: 'results', icon: 'overlays', label: this.$gettext('Results') }
       ].filter(i => i)
     },
@@ -186,6 +196,9 @@ export default {
       }
       collect(this.project.overlays.tree)
       return list
+    },
+    ogcBaseUrl () {
+      return `/api/map/ogc-processes/${this.project.config.name}`
     },
     showSearchbar () {
       return this.project.overlays.list.length > 9

@@ -92,17 +92,10 @@
       >
         <div class="f-col">
           <portal-target name="main-panel-top"/>
-          <content-panel/>
+          <content-panel @executed="onProcessExecuted"/>
         </div>
       </div>
     </transition>
-    <portal to="right-panel">
-      <ogc-processes
-        class="mx-1 mt-2"
-        :base-url="`/api/map/ogc-processes/${$store.state.project.config.name}`"
-        @executed="onProcessExecuted"
-      />
-    </portal>
     <map-tools ref="tools" show-header hidden-identification/>
   </div>
 </template>
@@ -128,13 +121,11 @@ import ScaleLine from '@/components/ol/ScaleLine.vue'
 import MapTools from '@/components/MapTools.vue'
 import AppMenu from '@/components/AppMenu.vue'
 import SearchTool from '@/components/SearchTool.vue'
-import OgcProcesses from '@/components/ogc-processes/OgcProcesses.vue'
-
 export default {
   name: 'Map',
   mixins: [Map],
   components: {
-    ContentPanel, BottomToolbar, ScaleLine, MapAttributions, ToolsMenu, MapControl, MapTools, AppMenu, SearchTool, OgcProcesses
+    ContentPanel, BottomToolbar, ScaleLine, MapAttributions, ToolsMenu, MapControl, MapTools, AppMenu, SearchTool
   },
   refs: ['tools'],
   data () {
