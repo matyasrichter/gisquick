@@ -3,7 +3,6 @@
     <div class="panel-header f-row-ac f-justify-center">
       <translate class="title">Content</translate>
     </div>
-    <ogc-processes :baseUrl="`/api/map/ogc-processes/${$store.state.project.config.name}`"/>
     <v-tabs-header :items="tabsItems" v-model="activeMainTab"/>
     <v-tabs class="f-grow" :items="tabsItems" v-model="activeMainTab">
       <template v-slot:base>
@@ -80,6 +79,27 @@
           <map-legend :visible="visible"/>
         </scroll-area>
       </template>
+      <template v-slot:results>
+        <scroll-area>
+          <div class="result-layers">
+            <div
+              v-for="layer in resultLayers"
+              :key="layer.id"
+              class="result-layer f-row-ac px-2"
+            >
+              <v-checkbox
+                :value="layer.visible"
+                @input="$store.commit('resultLayerVisibility', { layer, visible: $event })"
+              />
+              <span class="layer-name f-grow mx-1">{{ layer.name }}</span>
+              <span class="layer-type">{{ layer.type.toUpperCase() }}</span>
+              <v-btn class="icon small flat" @click="$store.commit('removeResultLayer', layer)">
+                <v-icon name="x" size="14"/>
+              </v-btn>
+            </div>
+          </div>
+        </scroll-area>
+      </template>
     </v-tabs>
   </div>
 </template>
@@ -97,12 +117,11 @@ import LayersTree from './LayersTree.vue'
 import TopicsList from './TopicsList.vue'
 import MapLegend from './Legend.vue'
 import { textMatcher } from '@/ui/utils/text'
-import OgcProcesses from '../ogc-processes/OgcProcesses.vue'
 
 
 export default {
   name: 'content-panel',
-  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList, OgcProcesses },
+  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList },
   props: {
     attributeTableDisabled: Boolean
   },
@@ -123,7 +142,7 @@ export default {
     }
   },
   computed: {
-    ...mapState(['project']),
+    ...mapState(['project', 'resultLayers']),
     ...mapGetters(['visibleBaseLayer', 'visibleLayers']),
     visibleBaseLayerName () {
       return this.visibleBaseLayer && this.visibleBaseLayer.name
@@ -141,7 +160,8 @@ export default {
       return [
         this.hasBaseLayers && { key: 'base', icon: 'base-layer', label: this.$gettext('Base Layers') },
         { key: 'overlays', icon: 'overlays', label: this.$gettext('Overlay Layers') },
-        { key: 'legend', icon: 'legend', label: this.$gettext('Legend') }
+        { key: 'legend', icon: 'legend', label: this.$gettext('Legend') },
+        this.resultLayers.length > 0 && { key: 'results', icon: 'overlays', label: this.$gettext('Results') }
       ].filter(i => i)
     },
     overlaysTabs () {
@@ -181,6 +201,11 @@ export default {
     this.activeSecondaryTab = this.topics?.length ? 'topics' : 'layers'
   },
   watch: {
+    tabsItems (items) {
+      if (!items.find(i => i.key === this.activeMainTab)) {
+        this.activeMainTab = 'overlays'
+      }
+    },
     project: {
       immediate: true,
       handler (project) {
@@ -264,6 +289,24 @@ export default {
     .text-field ::v-deep .input {
       font-size: 14px;
       height: 26px;
+    }
+  }
+  .result-layers {
+    .result-layer {
+      height: 32px;
+      gap: 0;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      .layer-name {
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .layer-type {
+        font-size: 11px;
+        opacity: 0.45;
+        letter-spacing: 0.03em;
+      }
     }
   }
   @media (min-height: 601px) {

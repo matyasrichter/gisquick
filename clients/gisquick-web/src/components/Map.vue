@@ -96,12 +96,27 @@
         </div>
       </div>
     </transition>
+    <portal to="right-panel">
+      <ogc-processes
+        class="mx-1 mt-2"
+        :base-url="`/api/map/ogc-processes/${$store.state.project.config.name}`"
+        @executed="onProcessExecuted"
+      />
+    </portal>
     <map-tools ref="tools" show-header hidden-identification/>
   </div>
 </template>
 
 <script>
+import axios from 'axios'
 import { mapState } from 'vuex'
+import WMSCapabilities from 'ol/format/WMSCapabilities'
+import ImageWMS from 'ol/source/ImageWMS'
+import ImageLayer from 'ol/layer/Image'
+import VectorSource from 'ol/source/Vector'
+import VectorLayer from 'ol/layer/Vector'
+import GeoJSON from 'ol/format/GeoJSON'
+import { bbox as bboxStrategy } from 'ol/loadingstrategy'
 
 import Map from '@/mixins/Map'
 import ContentPanel from '@/components/content-panel/ContentPanel.vue'
@@ -113,12 +128,13 @@ import ScaleLine from '@/components/ol/ScaleLine.vue'
 import MapTools from '@/components/MapTools.vue'
 import AppMenu from '@/components/AppMenu.vue'
 import SearchTool from '@/components/SearchTool.vue'
+import OgcProcesses from '@/components/ogc-processes/OgcProcesses.vue'
 
 export default {
   name: 'Map',
   mixins: [Map],
   components: {
-    ContentPanel, BottomToolbar, ScaleLine, MapAttributions, ToolsMenu, MapControl, MapTools, AppMenu, SearchTool
+    ContentPanel, BottomToolbar, ScaleLine, MapAttributions, ToolsMenu, MapControl, MapTools, AppMenu, SearchTool, OgcProcesses
   },
   refs: ['tools'],
   data () {
@@ -128,16 +144,123 @@ export default {
     }
   },
   computed: {
-    ...mapState(['user']),
+    ...mapState(['user', 'resultLayers']),
     toolsMenuItems () {
       const tools = (this.$refs.tools && this.$refs.tools.items) || []
       return tools.filter(t => !t.disabled)
     }
   },
+  watch: {
+    resultLayers: {
+      deep: true,
+      handler (layers) {
+        Object.keys(this._olResultLayers).forEach(id => {
+          if (!layers.find(l => l.id === id)) {
+            this.$map.removeLayer(this._olResultLayers[id])
+            delete this._olResultLayers[id]
+          }
+        })
+        layers.forEach(layer => {
+          const olLayer = this._olResultLayers[layer.id]
+          if (olLayer) {
+            olLayer.setVisible(layer.visible)
+            olLayer.setOpacity(layer.opacity / 255)
+          }
+        })
+      }
+    }
+  },
   created () {
+    this._olResultLayers = {}
     this.$root.$panel = {
       setStatusBarVisible: (visible) => {
         this.statusBarVisible = visible
+      }
+    }
+  },
+  beforeDestroy () {
+    Object.values(this._olResultLayers).forEach(l => this.$map?.removeLayer(l))
+    this.$store.commit('clearResultLayers')
+  },
+  methods: {
+    async onProcessExecuted ({ processId, owsUrl }) {
+      console.log('Process executed, id:', processId,  'OWS URL:', owsUrl)
+      if (!owsUrl) return
+      const [wmsResult, wfsResult] = await Promise.allSettled([
+        this._loadWmsLayers(processId, owsUrl),
+        this._loadWfsLayers(processId, owsUrl)
+      ])
+      if (wmsResult.status === 'rejected') {
+        console.error('Failed to load WMS layers from job result:', wmsResult.reason)
+      }
+      if (wfsResult.status === 'rejected') {
+        console.error('Failed to load WFS layers from job result:', wfsResult.reason)
+      }
+    },
+    async _loadWmsLayers (processId, owsUrl) {
+      const { data } = await axios.get(owsUrl, {
+        params: { SERVICE: 'WMS', REQUEST: 'GetCapabilities', VERSION: '1.3.0' }
+      })
+      const caps = new WMSCapabilities().read(data)
+      const layerList = caps?.Capability?.Layer?.Layer ?? []
+      for (const layerCaps of layerList) {
+        const layerName = layerCaps.Name
+        if (!layerName) continue
+        const source = new ImageWMS({
+          url: owsUrl,
+          params: { LAYERS: layerName, FORMAT: 'image/png', TRANSPARENT: 'TRUE' },
+          ratio: 1
+        })
+        const olLayer = new ImageLayer({ source, visible: true })
+        this.$map.addLayer(olLayer)
+        const id = `result-${processId}-wms-${layerName}-${Date.now()}`
+        this._olResultLayers[id] = olLayer
+        this.$store.commit('addResultLayer', {
+          id,
+          name: layerCaps.Title || layerName,
+          type: 'wms',
+          visible: true,
+          opacity: 255
+        })
+      }
+    },
+    async _loadWfsLayers (processId, owsUrl) {
+      const { data } = await axios.get(owsUrl, {
+        params: { SERVICE: 'WFS', REQUEST: 'GetCapabilities', VERSION: '2.0.0' }
+      })
+      const doc = new DOMParser().parseFromString(data, 'text/xml')
+      const featureTypes = Array.from(doc.querySelectorAll('FeatureType'))
+      const projection = this.$store.state.project.config.projection
+      for (const ft of featureTypes) {
+        const layerName = ft.querySelector('Name')?.textContent?.trim()
+        const title = ft.querySelector('Title')?.textContent?.trim()
+        if (!layerName) continue
+        const source = new VectorSource({
+          format: new GeoJSON(),
+          strategy: bboxStrategy,
+          url: extent => {
+            const url = new URL(owsUrl)
+            url.searchParams.set('SERVICE', 'WFS')
+            url.searchParams.set('VERSION', '2.0.0')
+            url.searchParams.set('REQUEST', 'GetFeature')
+            url.searchParams.set('TYPENAMES', layerName)
+            url.searchParams.set('OUTPUTFORMAT', 'application/json')
+            url.searchParams.set('SRSNAME', projection)
+            url.searchParams.set('BBOX', `${extent.join(',')},${projection}`)
+            return url.toString()
+          }
+        })
+        const olLayer = new VectorLayer({ source, visible: true })
+        this.$map.addLayer(olLayer)
+        const id = `result-${processId}-wfs-${layerName}-${Date.now()}`
+        this._olResultLayers[id] = olLayer
+        this.$store.commit('addResultLayer', {
+          id,
+          name: title || layerName,
+          type: 'wfs',
+          visible: true,
+          opacity: 255
+        })
       }
     }
   }
@@ -386,7 +509,7 @@ export default {
   margin: 0;
   width: 20px;
   height: 36px;
-  
+
   min-width: 0;
   padding: 0;
   border-radius: 0;

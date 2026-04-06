@@ -13,6 +13,11 @@
         <h3 class="m-0" v-text="processDesc.title || processDesc.id"/>
         <p v-if="processDesc.description" class="description mt-1" v-text="processDesc.description"/>
       </div>
+      <div v-if="activePickerField" class="picking-hint f-row-ac p-2 mb-1">
+        <v-icon name="point" size="16" class="mr-1"/>
+        <span>{{ pickingHintText }}</span>
+        <v-btn class="small flat ml-auto" @click="stopPicking">Cancel</v-btn>
+      </div>
       <div class="inputs-form f-col">
         <template v-for="(schema, name) in inputSchemas">
           <div :key="name" class="form-field">
@@ -75,6 +80,30 @@
                 </div>
               </div>
             </template>
+            <template v-else-if="isGeometryInput(schema)">
+              <div class="geometry-field f-col">
+                <label class="field-label" v-text="fieldLabel(schema, name)"/>
+                <div class="geometry-pick-row f-row-ac" style="gap: 8px">
+                  <v-btn
+                    class="small"
+                    :color="activePickerField === name ? 'orange' : 'primary'"
+                    @click="activePickerField === name ? stopPicking() : startPicking(name, schema)"
+                  >
+                    {{ activePickerField === name ? 'Cancel' : (formData[name] ? 'Reselect from map' : 'Select from map') }}
+                  </v-btn>
+                  <span v-if="formData[name] && activePickerField !== name" class="geometry-summary">
+                    {{ geometrySummary(formData[name]) }}
+                  </span>
+                  <v-btn
+                    v-if="formData[name]"
+                    class="icon small flat"
+                    @click="clearGeometry(name)"
+                  >
+                    <v-icon name="x" size="14"/>
+                  </v-btn>
+                </div>
+              </div>
+            </template>
             <template v-else>
               <v-text-field
                 :label="fieldLabel(schema, name)"
@@ -95,6 +124,15 @@
 
 <script>
 import axios from 'axios'
+import Draw from 'ol/interaction/Draw'
+import VectorSource from 'ol/source/Vector'
+import OlVectorLayer from 'ol/layer/Vector'
+import GeoJSON from 'ol/format/GeoJSON'
+import WKT from 'ol/format/WKT'
+
+const GEOMETRY_FORMATS = ['geojson', 'wkt', 'ewkt', 'wkb', 'ewkb']
+const WKT_FORMATS = ['wkt', 'ewkt', 'wkb', 'ewkb']
+const GEOMETRY_TYPE_RE = /Point|LineString|Polygon|MultiPoint|MultiLineString|MultiPolygon|Geometry/i
 
 export default {
   props: {
@@ -117,7 +155,11 @@ export default {
       loading: false,
       error: null,
       formData: {},
-      bboxLabels: ['Min X', 'Min Y', 'Max X', 'Max Y']
+      bboxLabels: ['Min X', 'Min Y', 'Max X', 'Max Y'],
+      activePickerField: null,
+      _draw: null,
+      _drawLayer: null,
+      _pickerDef: null
     }
   },
   computed: {
@@ -141,6 +183,20 @@ export default {
       return Object.entries(this.processDesc.inputs)
         .filter(([, def]) => (def.minOccurs ?? 0) > 0)
         .map(([name]) => name)
+    },
+    pickingHintText () {
+      if (!this.activePickerField || !this._pickerDef) return ''
+      const olType = this.getOlGeometryType(this._pickerDef)
+      if (olType === 'Point' || olType === 'MultiPoint') {
+        return 'Click on the map to place a point'
+      }
+      if (olType === 'Polygon' || olType === 'MultiPolygon') {
+        return 'Click to add vertices, double-click to finish the polygon'
+      }
+      if (olType === 'LineString' || olType === 'MultiLineString') {
+        return 'Click to add points, double-click to finish the line'
+      }
+      return 'Click on the map to select a geometry'
     }
   },
   watch: {
@@ -161,6 +217,9 @@ export default {
         this.$emit('input', { ...data })
       }
     }
+  },
+  beforeDestroy () {
+    this._cleanupPicker(true)
   },
   methods: {
     async fetchDescription () {
@@ -246,6 +305,128 @@ export default {
       const name = (def.title || '').toLowerCase()
       return name.includes('bbox') || name.includes('bounding box')
     },
+    isGeometryInput (def) {
+      const schema = def.schema || {}
+      if (GEOMETRY_FORMATS.includes(schema.format)) return true
+      if (schema.contentMediaType === 'application/geo+json') return true
+      if (schema.$ref && GEOMETRY_TYPE_RE.test(schema.$ref)) return true
+      const text = ((def.title || '') + ' ' + (def.description || '')).toLowerCase()
+      return /\b(geometry|point|polygon|linestring|line string)\b/.test(text)
+    },
+    getOlGeometryType (def) {
+      const schema = def.schema || {}
+      if (schema.$ref) {
+        const m = schema.$ref.match(GEOMETRY_TYPE_RE)
+        if (m) return m[0]
+      }
+      const text = ((def.title || '') + ' ' + (def.description || '')).toLowerCase()
+      if (/\bmultipolygon\b/.test(text)) return 'MultiPolygon'
+      if (/\bmultilinestring\b/.test(text)) return 'MultiLineString'
+      if (/\bmultipoint\b/.test(text)) return 'MultiPoint'
+      if (/\bpolygon\b/.test(text)) return 'Polygon'
+      if (/\b(linestring|line string)\b/.test(text)) return 'LineString'
+      if (/\bpoint\b/.test(text)) return 'Point'
+      return 'Point'
+    },
+    getOutputFormat (def) {
+      const schema = def.schema || {}
+      return WKT_FORMATS.includes(schema.format) ? 'wkt' : 'geojson'
+    },
+    startPicking (name, def) {
+      this._cleanupPicker(false)
+      this.activePickerField = name
+      this._pickerDef = def
+
+      const source = new VectorSource()
+      const layer = new OlVectorLayer({ source, zIndex: 999 })
+      this.$map.addLayer(layer)
+      this._drawLayer = layer
+
+      const olType = this.getOlGeometryType(def)
+      const draw = new Draw({ source, type: olType })
+      draw.on('drawend', evt => {
+        const mapProj = this.$map.getView().getProjection()
+        const geom = evt.feature.getGeometry()
+        const outputFormat = this.getOutputFormat(def)
+        let value
+        if (outputFormat === 'wkt') {
+          value = new WKT().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj })
+        } else {
+          value = JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
+        }
+        this.$set(this.formData, name, value)
+        this._stopInteraction()
+      })
+
+      this.$map.addInteraction(draw)
+      this._draw = draw
+      this.$map.getViewport().style.cursor = 'crosshair'
+    },
+    _stopInteraction () {
+      if (this._draw) {
+        this.$map.removeInteraction(this._draw)
+        this._draw = null
+      }
+      this.activePickerField = null
+      this._pickerDef = null
+      this.$map.getViewport().style.cursor = ''
+    },
+    stopPicking () {
+      // Remove draw layer if no geometry was captured for this field
+      const field = this.activePickerField
+      this._stopInteraction()
+      if (field && !this.formData[field] && this._drawLayer) {
+        this.$map.removeLayer(this._drawLayer)
+        this._drawLayer = null
+      }
+    },
+    _cleanupPicker (removeLayer) {
+      if (this._draw) {
+        this.$map.removeInteraction(this._draw)
+        this._draw = null
+      }
+      if (removeLayer && this._drawLayer) {
+        this.$map.removeLayer(this._drawLayer)
+        this._drawLayer = null
+      }
+      this.activePickerField = null
+      this._pickerDef = null
+      if (this.$map) {
+        this.$map.getViewport().style.cursor = ''
+      }
+    },
+    clearGeometry (name) {
+      this.$set(this.formData, name, null)
+      if (this._drawLayer) {
+        this.$map.removeLayer(this._drawLayer)
+        this._drawLayer = null
+      }
+    },
+    geometrySummary (value) {
+      if (!value) return ''
+      if (typeof value === 'string') {
+        // WKT: truncate for display
+        return value.length > 60 ? value.slice(0, 57) + '…' : value
+      }
+      if (typeof value === 'object' && value.type) {
+        const type = value.type
+        const coords = value.coordinates
+        if (type === 'Point' && Array.isArray(coords)) {
+          return `Point [${coords.map(c => c.toFixed(5)).join(', ')}]`
+        }
+        if (type === 'LineString' && Array.isArray(coords)) {
+          return `LineString (${coords.length} points)`
+        }
+        if (type === 'Polygon' && Array.isArray(coords)) {
+          return `Polygon (${(coords[0] || []).length} vertices)`
+        }
+        if (type.startsWith('Multi') && Array.isArray(coords)) {
+          return `${type} (${coords.length} parts)`
+        }
+        return type
+      }
+      return 'Geometry selected'
+    },
     getFormValues () {
       const values = {}
       for (const [key, val] of Object.entries(this.formData)) {
@@ -270,6 +451,14 @@ export default {
       opacity: 0.8;
       margin-bottom: 0;
     }
+  }
+  .picking-hint {
+    background: rgba(33, 150, 243, 0.1);
+    border: 1px solid rgba(33, 150, 243, 0.35);
+    border-radius: 4px;
+    font-size: 0.85em;
+    color: #1565c0;
+    gap: 6px;
   }
   .inputs-form {
     gap: 8px;
@@ -304,6 +493,21 @@ export default {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .geometry-field {
+    gap: 4px;
+  }
+  .geometry-pick-row {
+    flex-wrap: wrap;
+  }
+  .geometry-summary {
+    font-size: 0.8em;
+    font-family: monospace;
+    opacity: 0.75;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

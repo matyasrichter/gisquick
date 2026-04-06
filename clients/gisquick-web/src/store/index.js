@@ -49,7 +49,8 @@ export default new Vuex.Store({
     activeTool: null,
     showLogin: false,
     baseLayerName: null,
-    location: null
+    location: null,
+    resultLayers: []
   },
   mutations: {
     app (state, app) {
@@ -165,6 +166,22 @@ export default new Vuex.Store({
     },
     location (state, location) {
       state.location = location
+    },
+    addResultLayer (state, layer) {
+      state.resultLayers.push(layer)
+    },
+    clearResultLayers (state) {
+      state.resultLayers = []
+    },
+    removeResultLayer (state, layer) {
+      const idx = state.resultLayers.indexOf(layer)
+      if (idx !== -1) state.resultLayers.splice(idx, 1)
+    },
+    resultLayerVisibility (state, { layer, visible }) {
+      layer.visible = visible
+    },
+    resultLayerOpacity (state, { layer, opacity }) {
+      layer.opacity = opacity
     }
   },
   getters: {
