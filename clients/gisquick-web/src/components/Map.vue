@@ -174,8 +174,8 @@ export default {
     this.$store.commit('clearResultLayers')
   },
   methods: {
-    async onProcessExecuted ({ processId, owsUrl }) {
-      console.log('Process executed, id:', processId,  'OWS URL:', owsUrl)
+    async onProcessExecuted ({ processId, result, owsUrl }) {
+      console.log('Process executed, id:', processId, 'OWS URL:', owsUrl)
       if (!owsUrl) return
       const [wmsResult, wfsResult] = await Promise.allSettled([
         this._loadWmsLayers(processId, owsUrl),
@@ -186,6 +186,13 @@ export default {
       }
       if (wfsResult.status === 'rejected') {
         console.error('Failed to load WFS layers from job result:', wfsResult.reason)
+      }
+      if (result && typeof result === 'object') {
+        this.$store.commit('addResultArtifact', {
+          id: `artifact-${processId}-${Date.now()}`,
+          label: processId,
+          data: result
+        })
       }
     },
     async _loadWmsLayers (processId, owsUrl) {

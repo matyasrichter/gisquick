@@ -33,7 +33,9 @@
             <v-icon name="x" size="16"/>
           </v-btn>
         </div>
-        <pre class="result-body">{{ formattedResult }}</pre>
+        <div class="result-body">
+          <json-viewer :data="result"/>
+        </div>
       </div>
       <div v-if="executeError" class="error-panel mt-2 p-2">
         <strong>Error:</strong> {{ executeError }}
@@ -46,6 +48,7 @@
 import axios from 'axios'
 import OgcProcessSelect from './OgcProcessSelect.vue'
 import OgcProcessForm from './OgcProcessForm.vue'
+import JsonViewer from './JsonViewer.vue'
 
 const OGC_REL_RESULTS = 'http://www.opengis.net/def/rel/ogc/1.0/results'
 
@@ -67,7 +70,7 @@ function sleep (ms) {
 }
 
 export default {
-  components: { OgcProcessSelect, OgcProcessForm },
+  components: { OgcProcessSelect, OgcProcessForm, JsonViewer },
   props: {
     baseUrl: {
       type: String,
@@ -89,14 +92,7 @@ export default {
       pollingStatus: ''
     }
   },
-  computed: {
-    formattedResult () {
-      if (!this.result) return ''
-      return typeof this.result === 'object'
-        ? JSON.stringify(this.result, null, 2)
-        : String(this.result)
-    }
-  },
+  computed: {},
   watch: {
     selectedProcessId () {
       this.clearResult()
@@ -212,10 +208,7 @@ export default {
     }
     .result-body {
       padding: 8px;
-      margin: 0;
-      font-size: 0.85em;
-      white-space: pre-wrap;
-      word-break: break-word;
+      overflow: auto;
     }
   }
   .error-panel {

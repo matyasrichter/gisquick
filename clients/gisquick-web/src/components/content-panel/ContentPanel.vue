@@ -106,6 +106,31 @@
               </v-btn>
             </div>
           </div>
+          <div v-if="resultArtifacts.length" class="result-artifacts">
+            <div
+              v-for="artifact in resultArtifacts"
+              :key="artifact.id"
+              class="result-artifact"
+            >
+              <div class="artifact-header f-row-ac px-2" @click="toggleArtifact(artifact.id)">
+                <v-icon
+                  :name="expandedArtifacts.includes(artifact.id) ? 'chevron-down' : 'chevron-right'"
+                  size="14"
+                  class="mr-1"
+                />
+                <span class="artifact-label f-grow">{{ artifact.label }}</span>
+                <span class="artifact-badge">JSON</span>
+                <v-btn class="icon small flat" @click.stop="$store.commit('removeResultArtifact', artifact)">
+                  <v-icon name="x" size="14"/>
+                </v-btn>
+              </div>
+              <v-collapsible>
+                <div v-if="expandedArtifacts.includes(artifact.id)" class="artifact-body px-2 py-1">
+                  <json-viewer :data="artifact.data"/>
+                </div>
+              </v-collapsible>
+            </div>
+          </div>
         </scroll-area>
       </template>
     </v-tabs>
@@ -125,12 +150,14 @@ import LayersTree from './LayersTree.vue'
 import TopicsList from './TopicsList.vue'
 import MapLegend from './Legend.vue'
 import OgcProcesses from '@/components/ogc-processes/OgcProcesses.vue'
+import VCollapsible from '@/ui/Collapsible.vue'
+import JsonViewer from '@/components/ogc-processes/JsonViewer.vue'
 import { textMatcher } from '@/ui/utils/text'
 
 
 export default {
   name: 'content-panel',
-  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList, OgcProcesses },
+  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList, OgcProcesses, VCollapsible, JsonViewer },
   props: {
     attributeTableDisabled: Boolean
   },
@@ -140,6 +167,7 @@ export default {
       activeSecondaryTab: '',
       collapsedBaseLayers: [],
       collapsedOverlays: [],
+      expandedArtifacts: [],
       filterText: '',
       filterMode: true,
       searchContext: {
@@ -151,7 +179,7 @@ export default {
     }
   },
   computed: {
-    ...mapState(['project', 'resultLayers']),
+    ...mapState(['project', 'resultLayers', 'resultArtifacts']),
     ...mapGetters(['visibleBaseLayer', 'visibleLayers']),
     visibleBaseLayerName () {
       return this.visibleBaseLayer && this.visibleBaseLayer.name
@@ -171,7 +199,7 @@ export default {
         { key: 'overlays', icon: 'overlays', label: this.$gettext('Overlay Layers') },
         { key: 'legend', icon: 'legend', label: this.$gettext('Legend') },
         { key: 'processing', icon: 'tools', label: this.$gettext('Processing') },
-        this.resultLayers.length > 0 && { key: 'results', icon: 'overlays', label: this.$gettext('Results') }
+        (this.resultLayers.length > 0 || this.resultArtifacts.length > 0) && { key: 'results', icon: 'overlays', label: this.$gettext('Results') }
       ].filter(i => i)
     },
     overlaysTabs () {
@@ -230,6 +258,10 @@ export default {
   methods: {
     setBaseLayer (name) {
       this.$store.commit('visibleBaseLayer', name)
+    },
+    toggleArtifact (id) {
+      const idx = this.expandedArtifacts.indexOf(id)
+      idx === -1 ? this.expandedArtifacts.push(id) : this.expandedArtifacts.splice(idx, 1)
     },
     async highlightResult () {
       const match = this.searchContext.matches[this.searchContext.index]
@@ -319,6 +351,36 @@ export default {
         font-size: 11px;
         opacity: 0.45;
         letter-spacing: 0.03em;
+      }
+    }
+  }
+  .result-artifacts {
+    border-top: 1px solid rgba(0,0,0,0.08);
+    .result-artifact {
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      .artifact-header {
+        height: 32px;
+        gap: 0;
+        cursor: pointer;
+        user-select: none;
+        &:hover {
+          background: rgba(0,0,0,0.04);
+        }
+        .artifact-label {
+          font-size: 13px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .artifact-badge {
+          font-size: 11px;
+          opacity: 0.45;
+          letter-spacing: 0.03em;
+        }
+      }
+      .artifact-body {
+        background: rgba(0,0,0,0.02);
+        overflow: auto;
       }
     }
   }

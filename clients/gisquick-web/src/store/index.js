@@ -50,7 +50,8 @@ export default new Vuex.Store({
     showLogin: false,
     baseLayerName: null,
     location: null,
-    resultLayers: []
+    resultLayers: [],
+    resultArtifacts: []
   },
   mutations: {
     app (state, app) {
@@ -172,10 +173,18 @@ export default new Vuex.Store({
     },
     clearResultLayers (state) {
       state.resultLayers = []
+      state.resultArtifacts = []
     },
     removeResultLayer (state, layer) {
       const idx = state.resultLayers.indexOf(layer)
       if (idx !== -1) state.resultLayers.splice(idx, 1)
+    },
+    addResultArtifact (state, artifact) {
+      state.resultArtifacts.push(artifact)
+    },
+    removeResultArtifact (state, artifact) {
+      const idx = state.resultArtifacts.indexOf(artifact)
+      if (idx !== -1) state.resultArtifacts.splice(idx, 1)
     },
     resultLayerVisibility (state, { layer, visible }) {
       layer.visible = visible
