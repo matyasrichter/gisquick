@@ -177,16 +177,20 @@ export default {
     async onProcessExecuted ({ processId, result, owsUrl }) {
       console.log('Process executed, id:', processId, 'OWS URL:', owsUrl)
       if (!owsUrl) return
-      const [wmsResult, wfsResult] = await Promise.allSettled([
-        this._loadWmsLayers(processId, owsUrl),
-        this._loadWfsLayers(processId, owsUrl)
-      ])
-      if (wmsResult.status === 'rejected') {
-        console.error('Failed to load WMS layers from job result:', wmsResult.reason)
+
+      let wfsLayerNames = new Set()
+      try {
+        wfsLayerNames = await this._loadWfsLayers(processId, owsUrl)
+      } catch (e) {
+        console.error('Failed to load WFS layers from job result:', e)
       }
-      if (wfsResult.status === 'rejected') {
-        console.error('Failed to load WFS layers from job result:', wfsResult.reason)
+
+      try {
+        await this._loadWmsLayers(processId, owsUrl, wfsLayerNames)
+      } catch (e) {
+        console.error('Failed to load WMS layers from job result:', e)
       }
+
       if (result && typeof result === 'object') {
         this.$store.commit('addResultArtifact', {
           id: `artifact-${processId}-${Date.now()}`,
@@ -195,7 +199,7 @@ export default {
         })
       }
     },
-    async _loadWmsLayers (processId, owsUrl) {
+    async _loadWmsLayers (processId, owsUrl, skipNames = new Set()) {
       const { data } = await axios.get(owsUrl, {
         params: { SERVICE: 'WMS', REQUEST: 'GetCapabilities', VERSION: '1.3.0' }
       })
@@ -203,7 +207,7 @@ export default {
       const layerList = caps?.Capability?.Layer?.Layer ?? []
       for (const layerCaps of layerList) {
         const layerName = layerCaps.Name
-        if (!layerName) continue
+        if (!layerName || skipNames.has(layerName)) continue
         const source = new ImageWMS({
           url: owsUrl,
           params: { LAYERS: layerName, FORMAT: 'image/png', TRANSPARENT: 'TRUE' },
@@ -224,11 +228,12 @@ export default {
     },
     async _loadWfsLayers (processId, owsUrl) {
       const { data } = await axios.get(owsUrl, {
-        params: { SERVICE: 'WFS', REQUEST: 'GetCapabilities', VERSION: '2.0.0' }
+        params: { SERVICE: 'WFS', REQUEST: 'GetCapabilities', VERSION: '1.1.0' }
       })
       const doc = new DOMParser().parseFromString(data, 'text/xml')
       const featureTypes = Array.from(doc.querySelectorAll('FeatureType'))
       const projection = this.$store.state.project.config.projection
+      const addedNames = new Set()
       for (const ft of featureTypes) {
         const layerName = ft.querySelector('Name')?.textContent?.trim()
         const title = ft.querySelector('Title')?.textContent?.trim()
@@ -236,16 +241,16 @@ export default {
         const source = new VectorSource({
           format: new GeoJSON(),
           strategy: bboxStrategy,
-          url: extent => {
-            const url = new URL(owsUrl)
-            url.searchParams.set('SERVICE', 'WFS')
-            url.searchParams.set('VERSION', '2.0.0')
-            url.searchParams.set('REQUEST', 'GetFeature')
-            url.searchParams.set('TYPENAMES', layerName)
-            url.searchParams.set('OUTPUTFORMAT', 'application/json')
-            url.searchParams.set('SRSNAME', projection)
-            url.searchParams.set('BBOX', `${extent.join(',')},${projection}`)
-            return url.toString()
+          url (extent) {
+            return `${owsUrl}?${new URLSearchParams({
+              SERVICE: 'WFS',
+              VERSION: '1.1.0',
+              REQUEST: 'GetFeature',
+              TYPENAME: layerName,
+              SRSNAME: projection,
+              OUTPUTFORMAT: 'GeoJSON',
+              BBOX: `${extent.join(',')},${projection}`
+            })}`
           }
         })
         const olLayer = new VectorLayer({ source, visible: true })
@@ -259,7 +264,9 @@ export default {
           visible: true,
           opacity: 255
         })
+        addedNames.add(layerName)
       }
+      return addedNames
     }
   }
 }
