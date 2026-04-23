@@ -70,6 +70,7 @@
                 :filter="filterMode ? filterText : ''"
                 :collapsed.sync="collapsedOverlays"
               />
+              <result-layers-group/>
             </scroll-area>
           </template>
         </v-tabs>
@@ -85,52 +86,6 @@
             :base-url="ogcBaseUrl"
             @executed="$emit('executed', $event)"
           />
-        </scroll-area>
-      </template>
-      <template v-slot:results>
-        <scroll-area>
-          <div class="result-layers">
-            <div
-              v-for="layer in resultLayers"
-              :key="layer.id"
-              class="result-layer f-row-ac px-2"
-            >
-              <v-checkbox
-                :value="layer.visible"
-                @input="$store.commit('resultLayerVisibility', { layer, visible: $event })"
-              />
-              <span class="layer-name f-grow mx-1">{{ layer.name }}</span>
-              <span class="layer-type">{{ layer.type.toUpperCase() }}</span>
-              <v-btn class="icon small flat" @click="$store.commit('removeResultLayer', layer)">
-                <v-icon name="x" size="14"/>
-              </v-btn>
-            </div>
-          </div>
-          <div v-if="resultArtifacts.length" class="result-artifacts">
-            <div
-              v-for="artifact in resultArtifacts"
-              :key="artifact.id"
-              class="result-artifact"
-            >
-              <div class="artifact-header f-row-ac px-2" @click="toggleArtifact(artifact.id)">
-                <v-icon
-                  :name="expandedArtifacts.includes(artifact.id) ? 'chevron-down' : 'chevron-right'"
-                  size="14"
-                  class="mr-1"
-                />
-                <span class="artifact-label f-grow">{{ artifact.label }}</span>
-                <span class="artifact-badge">JSON</span>
-                <v-btn class="icon small flat" @click.stop="$store.commit('removeResultArtifact', artifact)">
-                  <v-icon name="x" size="14"/>
-                </v-btn>
-              </div>
-              <v-collapsible>
-                <div v-if="expandedArtifacts.includes(artifact.id)" class="artifact-body px-2 py-1">
-                  <json-viewer :data="artifact.data"/>
-                </div>
-              </v-collapsible>
-            </div>
-          </div>
         </scroll-area>
       </template>
     </v-tabs>
@@ -150,14 +105,13 @@ import LayersTree from './LayersTree.vue'
 import TopicsList from './TopicsList.vue'
 import MapLegend from './Legend.vue'
 import OgcProcesses from '@/components/ogc-processes/OgcProcesses.vue'
-import VCollapsible from '@/ui/Collapsible.vue'
-import JsonViewer from '@/components/ogc-processes/JsonViewer.vue'
+import ResultLayersGroup from './ResultLayersGroup.vue'
 import { textMatcher } from '@/ui/utils/text'
 
 
 export default {
   name: 'content-panel',
-  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList, OgcProcesses, VCollapsible, JsonViewer },
+  components: { VTabs, VTabsHeader, TextTabsHeader, MapLegend, OverlaysOpacity, BaseLayerOpacity, LayersTree, BaseLayersTree, TopicsList, OgcProcesses, ResultLayersGroup },
   props: {
     attributeTableDisabled: Boolean
   },
@@ -167,7 +121,6 @@ export default {
       activeSecondaryTab: '',
       collapsedBaseLayers: [],
       collapsedOverlays: [],
-      expandedArtifacts: [],
       filterText: '',
       filterMode: true,
       searchContext: {
@@ -179,7 +132,7 @@ export default {
     }
   },
   computed: {
-    ...mapState(['project', 'resultLayers', 'resultArtifacts']),
+    ...mapState(['project', 'resultLayers']),
     ...mapGetters(['visibleBaseLayer', 'visibleLayers']),
     visibleBaseLayerName () {
       return this.visibleBaseLayer && this.visibleBaseLayer.name
@@ -198,8 +151,7 @@ export default {
         this.hasBaseLayers && { key: 'base', icon: 'base-layer', label: this.$gettext('Base Layers') },
         { key: 'overlays', icon: 'overlays', label: this.$gettext('Overlay Layers') },
         { key: 'legend', icon: 'legend', label: this.$gettext('Legend') },
-        { key: 'processing', icon: 'tools', label: this.$gettext('Processing') },
-        (this.resultLayers.length > 0 || this.resultArtifacts.length > 0) && { key: 'results', icon: 'overlays', label: this.$gettext('Results') }
+        { key: 'processing', icon: 'tools', label: this.$gettext('Processing') }
       ].filter(i => i)
     },
     overlaysTabs () {
@@ -258,10 +210,6 @@ export default {
   methods: {
     setBaseLayer (name) {
       this.$store.commit('visibleBaseLayer', name)
-    },
-    toggleArtifact (id) {
-      const idx = this.expandedArtifacts.indexOf(id)
-      idx === -1 ? this.expandedArtifacts.push(id) : this.expandedArtifacts.splice(idx, 1)
     },
     async highlightResult () {
       const match = this.searchContext.matches[this.searchContext.index]
@@ -334,54 +282,6 @@ export default {
     .text-field ::v-deep .input {
       font-size: 14px;
       height: 26px;
-    }
-  }
-  .result-layers {
-    .result-layer {
-      height: 32px;
-      gap: 0;
-      border-bottom: 1px solid rgba(0,0,0,0.06);
-      .layer-name {
-        font-size: 13px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .layer-type {
-        font-size: 11px;
-        opacity: 0.45;
-        letter-spacing: 0.03em;
-      }
-    }
-  }
-  .result-artifacts {
-    border-top: 1px solid rgba(0,0,0,0.08);
-    .result-artifact {
-      border-bottom: 1px solid rgba(0,0,0,0.06);
-      .artifact-header {
-        height: 32px;
-        gap: 0;
-        cursor: pointer;
-        user-select: none;
-        &:hover {
-          background: rgba(0,0,0,0.04);
-        }
-        .artifact-label {
-          font-size: 13px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .artifact-badge {
-          font-size: 11px;
-          opacity: 0.45;
-          letter-spacing: 0.03em;
-        }
-      }
-      .artifact-body {
-        background: rgba(0,0,0,0.02);
-        overflow: auto;
-      }
     }
   }
   @media (min-height: 601px) {
