@@ -111,7 +111,7 @@ import VectorLayer from 'ol/layer/Vector'
 import GeoJSON from 'ol/format/GeoJSON'
 import { bbox as bboxStrategy } from 'ol/loadingstrategy'
 
-import Map from '@/mixins/Map'
+import MapMixin from '@/mixins/Map'
 import ContentPanel from '@/components/content-panel/ContentPanel.vue'
 import BottomToolbar from '@/components/BottomToolbar.vue'
 import MapAttributions from '@/components/MapAttributions.vue'
@@ -123,7 +123,7 @@ import AppMenu from '@/components/AppMenu.vue'
 import SearchTool from '@/components/SearchTool.vue'
 export default {
   name: 'Map',
-  mixins: [Map],
+  mixins: [MapMixin],
   components: {
     ContentPanel, BottomToolbar, ScaleLine, MapAttributions, ToolsMenu, MapControl, MapTools, AppMenu, SearchTool
   },
@@ -158,6 +158,18 @@ export default {
             olLayer.setOpacity(layer.opacity / 255)
           }
         })
+      }
+    }
+  },
+  provide () {
+    return {
+      getResultLayersMap: () => {
+        const out = new Map()
+        this.$store.state.resultLayers.forEach(meta => {
+          const olLayer = this._olResultLayers[meta.id]
+          if (olLayer) out.set(olLayer, meta)
+        })
+        return out
       }
     }
   },

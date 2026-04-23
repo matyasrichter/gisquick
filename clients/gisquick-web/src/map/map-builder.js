@@ -393,7 +393,6 @@ function createRetryTileLoadFunction(maxRetries = 3, retryDelay = 1000) {
       //   src += '?retry=' + failedTiles[key]
       // }
       imageTile.getImage().src = src
-      imageTile.load()
     }
 
     const image = imageTile.getImage()

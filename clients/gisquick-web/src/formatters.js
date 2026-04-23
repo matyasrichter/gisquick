@@ -25,13 +25,14 @@ function _formatFeatures (features, formatters) {
     f._formattedProperties = mapValues(formatters, (formetter, name) => formetter.format(f.get(name)))
 
     Object.defineProperty(f, 'getFormatted', {
-      // configurable: true,
+      configurable: true,
       value: function (key) {
         // return this._formattedProperties[key] ?? this.get(key)
         return has(this._formattedProperties, key) ? this._formattedProperties[key] : this.get(key)
       }
     })
     Object.defineProperty(f, 'getFormattedProperties', {
+      configurable: true,
       value: function () {
         return this._formattedProperties
       }

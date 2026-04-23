@@ -112,6 +112,7 @@ const IdentifyPointer = {
 export default {
   name: 'identification',
   components: { InfoPanel, FeaturesTable, PointMarker, FeaturesViewer, IdentifyPointer },
+  inject: ['getResultLayersMap'],
   props: {
     identificationLayer: {
       type: String,
@@ -273,6 +274,39 @@ export default {
       data.features = data.features.filter(f => Object.keys(f.properties).length > 0)
       return this.readFeatures(data)
     },
+    getResultLayerFeatures (pixel, map) {
+      const layersMeta = this.getResultLayersMap()
+      if (!layersMeta.size) return []
+
+      const hits = new Map()
+      map.forEachFeatureAtPixel(
+        pixel,
+        (feature, layer) => {
+          if (!hits.has(layer)) hits.set(layer, [])
+          hits.get(layer).push(feature)
+        },
+        { layerFilter: layer => layersMeta.has(layer), hitTolerance: 8 }
+      )
+
+      const items = []
+      for (const [olLayer, features] of hits) {
+        const meta = layersMeta.get(olLayer)
+        if (!meta?.visible) continue
+        const geomKey = features[0].getGeometryName?.() ?? 'geometry'
+        const attrNames = Object.keys(features[0].getProperties()).filter(k => k !== geomKey)
+        const attributes = attrNames.map(name => ({ name, alias: name, type: 'TEXT' }))
+        const syntheticLayer = {
+          name: meta.id,
+          title: meta.name,
+          attributes,
+          attr_table_fields: attrNames,
+          _isResultLayer: true
+        }
+        formatFeatures(this.project, syntheticLayer, features)
+        items.push({ layer: syntheticLayer, features: ShallowArray(features) })
+      }
+      return items
+    },
     async onClick (evt) {
       const { map, pixel, coordinate } = evt
       this.mapCoords = coordinate
@@ -290,11 +324,12 @@ export default {
           projection: this.mapProjection
         }
         const query = layersFeaturesQuery(wfsLayers, { geomFilter })
-        tasks.push(this.getFeaturesByWFS( query, { 'MAXFEATURES': 10 }))
+        tasks.push(this.getFeaturesByWFS(query, { 'MAXFEATURES': 10 }))
       }
+      const resultItems = this.getResultLayerFeatures(pixel, map)
       this.mapCoords = coordinate
       const features = await this.fetchFeatures(tasks)
-      this.setFeatures(features)
+      this.setFeatures(features, resultItems)
     },
     /* Fetch multiple features by id in single request. (It would require to know id/pk field name) */
     /*
@@ -334,9 +369,9 @@ export default {
       const features = [].concat(...res.filter(i => i.value).map(i => i.value))
       return features
     },
-    setFeatures (features) {
+    setFeatures (features, extraItems = []) {
       const categorizedFeatures = this.categorize(features)
-      const items = this.tableData(categorizedFeatures)
+      const items = [...this.tableData(categorizedFeatures), ...extraItems]
       this.layersFeatures = items
       if (items.length) {
         const selectedLayer = this.selection?.layer
