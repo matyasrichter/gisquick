@@ -120,6 +120,7 @@ import ScaleLine from '@/components/ol/ScaleLine.vue'
 import MapTools from '@/components/MapTools.vue'
 import AppMenu from '@/components/AppMenu.vue'
 import SearchTool from '@/components/SearchTool.vue'
+import { Geometry } from 'ol/geom'
 export default {
   name: 'Map',
   mixins: [MapMixin],
@@ -252,6 +253,11 @@ export default {
           const { data: featureData } = await axios.get(owsUrl, {
             params: { SERVICE: 'WFS', VERSION: '1.1.0', REQUEST: 'GetFeature', TYPENAME: layerName, OUTPUTFORMAT: 'GeoJSON' }
           })
+          // if one of the features includes a "geometry" property (in its properties attr),
+          // openlayers would crash because it would clash with the feature's actual geometry attribute
+          for (const f of featureData.features) {
+            delete f.properties?.geometry
+          }
           const fmt = new GeoJSON()
           const dataProjection = fmt.readProjection(featureData) ?? 'EPSG:4326'
           const features = fmt.readFeatures(featureData, { dataProjection, featureProjection: projection })
