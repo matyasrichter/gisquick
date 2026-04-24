@@ -109,7 +109,6 @@ import ImageLayer from 'ol/layer/Image'
 import VectorSource from 'ol/source/Vector'
 import VectorLayer from 'ol/layer/Vector'
 import GeoJSON from 'ol/format/GeoJSON'
-import { bbox as bboxStrategy } from 'ol/loadingstrategy'
 
 import MapMixin from '@/mixins/Map'
 import ContentPanel from '@/components/content-panel/ContentPanel.vue'
@@ -187,20 +186,18 @@ export default {
   },
   methods: {
     async onProcessExecuted ({ processId, result, owsUrl }) {
-      console.log('Process executed, id:', processId, 'OWS URL:', owsUrl)
-      if (!owsUrl) return
-
-      let wfsLayerNames = new Set()
-      try {
-        wfsLayerNames = await this._loadWfsLayers(processId, owsUrl)
-      } catch (e) {
-        console.error('Failed to load WFS layers from job result:', e)
-      }
-
-      try {
-        await this._loadWmsLayers(processId, owsUrl, wfsLayerNames)
-      } catch (e) {
-        console.error('Failed to load WMS layers from job result:', e)
+      if (owsUrl) {
+        let wfsLayerNames = new Set()
+        try {
+          wfsLayerNames = await this._loadWfsLayers(processId, owsUrl)
+        } catch (e) {
+          console.error('Failed to load WFS layers from job result:', e)
+        }
+        try {
+          await this._loadWmsLayers(processId, owsUrl, wfsLayerNames)
+        } catch (e) {
+          console.error('Failed to load WMS layers from job result:', e)
+        }
       }
 
       if (result && typeof result === 'object') {
@@ -250,21 +247,18 @@ export default {
         const layerName = ft.querySelector('Name')?.textContent?.trim()
         const title = ft.querySelector('Title')?.textContent?.trim()
         if (!layerName) continue
-        const source = new VectorSource({
-          format: new GeoJSON(),
-          strategy: bboxStrategy,
-          url (extent) {
-            return `${owsUrl}?${new URLSearchParams({
-              SERVICE: 'WFS',
-              VERSION: '1.1.0',
-              REQUEST: 'GetFeature',
-              TYPENAME: layerName,
-              SRSNAME: projection,
-              OUTPUTFORMAT: 'GeoJSON',
-              BBOX: `${extent.join(',')},${projection}`
-            })}`
-          }
-        })
+        const source = new VectorSource()
+        try {
+          const { data: featureData } = await axios.get(owsUrl, {
+            params: { SERVICE: 'WFS', VERSION: '1.1.0', REQUEST: 'GetFeature', TYPENAME: layerName, OUTPUTFORMAT: 'GeoJSON' }
+          })
+          const fmt = new GeoJSON()
+          const dataProjection = fmt.readProjection(featureData) ?? 'EPSG:4326'
+          const features = fmt.readFeatures(featureData, { dataProjection, featureProjection: projection })
+          source.addFeatures(features)
+        } catch (e) {
+          console.error('WFS load failed for', layerName, e)
+        }
         const olLayer = new VectorLayer({ source, visible: true })
         this.$map.addLayer(olLayer)
         const id = `result-${processId}-wfs-${layerName}-${Date.now()}`
