@@ -74,6 +74,7 @@
 import { mapState } from 'vuex'
 import partition from 'lodash/partition'
 import isEqual from 'lodash/isEqual'
+import { getCenter } from 'ol/extent'
 import { fromCircle } from 'ol/geom/Polygon'
 import Circle from 'ol/geom/Circle'
 import GeoJSON from 'ol/format/GeoJSON'
@@ -391,6 +392,11 @@ export default {
       this.layersFeatures = []
       this.mode = 'view'
       this.lastClickEvt = null
+    },
+    showFeature (olFeature, coord) {
+      const geom = olFeature.getGeometry()
+      this.mapCoords = coord || (geom ? getCenter(geom.getExtent()) : null)
+      this.setFeatures([olFeature])
     },
     categorize (features) {
       // (WFS layer name cannot contain space character)

@@ -11,6 +11,7 @@
         :base-url="baseUrl"
         :process-id="selectedProcessId"
         v-model="formValues"
+        @identify-feature="$emit('identify-feature', $event)"
       />
       <div class="actions f-row-ac mt-2">
         <v-btn

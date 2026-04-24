@@ -85,6 +85,7 @@
           <ogc-processes
             :base-url="ogcBaseUrl"
             @executed="$emit('executed', $event)"
+            @identify-feature="$emit('identify-feature', $event)"
           />
         </scroll-area>
       </template>

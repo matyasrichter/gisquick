@@ -99,6 +99,42 @@
                     placeholder="Select a layer…"
                     @input="v => { selectedLayerName = v; fetchLayerFeatures(name, schema, v) }"
                   />
+                  <!-- Collapsible feature list toggle -->
+                  <div
+                    v-if="formData[name] && formData[name].type === 'FeatureCollection'"
+                    class="layer-features-toggle f-row-ac"
+                    @click="$set(layerFeaturesOpen, name, !layerFeaturesOpen[name])"
+                  >
+                    <v-icon
+                      class="toggle-icon"
+                      name="arrow-down"
+                      size="12"
+                      :style="layerFeaturesOpen[name] ? '' : 'transform: rotate(-90deg)'"
+                    />
+                    <span class="toggle-label">
+                      {{ formData[name].features.length }} feature{{ formData[name].features.length !== 1 ? 's' : '' }}
+                    </span>
+                  </div>
+                  <!-- Feature list (collapsible) -->
+                  <collapse-transition>
+                    <div
+                      v-if="layerFeaturesOpen[name] && formData[name] && formData[name].type === 'FeatureCollection'"
+                      class="layer-features-list"
+                    >
+                      <div
+                        v-for="(feat, i) in formData[name].features"
+                        :key="i"
+                        class="layer-feature-item f-row-ac"
+                        :class="{ selected: layerPickerSelectedIndex[name] === i }"
+                        @click="clickLayerFeature(name, i)"
+                      >
+                        <span class="f-grow">{{ geoJsonFeatureLabel(feat, i) }}</span>
+                        <v-btn class="icon small flat" @click.stop="removeLayerFeature(name, i)">
+                          <v-icon name="x" size="11"/>
+                        </v-btn>
+                      </div>
+                    </div>
+                  </collapse-transition>
                 </div>
 
                 <!-- Multi-pick accumulation list -->
@@ -235,6 +271,8 @@ import WKT from 'ol/format/WKT'
 import Circle from 'ol/geom/Circle'
 import { fromCircle, fromExtent as polygonFromExtent } from 'ol/geom/Polygon'
 import { unByKey } from 'ol/Observable'
+import { getCenter } from 'ol/extent'
+import { simpleStyle } from '@/map/styles'
 import { layersFeaturesQuery, layerFeaturesQuery } from '@/map/featureinfo'
 
 const GEOMETRY_FORMATS = ['geojson', 'wkt', 'ewkt', 'wkb', 'ewkb']
@@ -262,7 +300,9 @@ export default {
       multiPickMode: false,
       multiPickedFeatures: [],
       selectedLayerName: null,
-      fetchingLayer: false
+      fetchingLayer: false,
+      layerFeaturesOpen: {},
+      layerPickerSelectedIndex: {}
     }
   },
   created () {
@@ -272,6 +312,9 @@ export default {
     this._pickerDef = null
     this._selectKey = null
     this._escapeUnbind = null
+    this._layerOlFeatures = []
+    this._drawLayerFeatures = []
+    this._selectedDrawFeature = null
   },
   computed: {
     ...mapState(['project']),
@@ -678,7 +721,15 @@ export default {
           this._drawLayer = olLayer
         }
         this._drawLayer.getSource().clear()
-        features.forEach(f => this._drawLayer.getSource().addFeature(f.clone()))
+        this._drawLayerFeatures = features.map(f => {
+          const clone = f.clone()
+          this._drawLayer.getSource().addFeature(clone)
+          return clone
+        })
+        this._selectedDrawFeature = null
+        this._layerOlFeatures = [...features]
+        this.$set(this.layerFeaturesOpen, name, false)
+        this.$set(this.layerPickerSelectedIndex, name, null)
         this.selectedLayerName = null
       } catch (e) {
         console.error('Layer features fetch failed', e)
@@ -725,6 +776,9 @@ export default {
     clearGeometry (name) {
       this.$set(this.formData, name, null)
       if (this._drawLayer) { this.$map.removeLayer(this._drawLayer); this._drawLayer = null }
+      this._drawLayerFeatures = []
+      this._selectedDrawFeature = null
+      this.$set(this.layerPickerSelectedIndex, name, null)
     },
 
     // ── Picker lifecycle ──────────────────────────────────────────────────
@@ -780,6 +834,53 @@ export default {
       const props = feature.getProperties()
       const nameKey = Object.keys(props).find(k => /^name$|^title$|^label$/i.test(k))
       return nameKey ? `${props[nameKey]} (${id})` : id || 'Feature'
+    },
+    geoJsonFeatureLabel (feature, index) {
+      const props = feature.properties || {}
+      const nameKey = Object.keys(props).find(k => /^name$|^title$|^label$/i.test(k))
+      return nameKey ? props[nameKey] : `Feature ${index + 1}`
+    },
+    clickLayerFeature (name, index) {
+      const selectedStyle = simpleStyle({ fill: [3, 169, 244, 0.4], stroke: [3, 169, 244, 0.9], strokeWidth: 3 })
+      if (this._selectedDrawFeature) {
+        this._selectedDrawFeature.setStyle(null)
+      }
+      const clone = this._drawLayerFeatures[index]
+      if (clone) {
+        clone.setStyle(selectedStyle)
+        this._selectedDrawFeature = clone
+      }
+      this.$set(this.layerPickerSelectedIndex, name, index)
+      const olFeature = this._layerOlFeatures[index]
+      if (olFeature) {
+        const coord = getCenter(olFeature.getGeometry().getExtent())
+        this.$emit('identify-feature', { feature: olFeature, coord })
+      }
+    },
+    removeLayerFeature (name, index) {
+      const fc = this.formData[name]
+      if (!fc || fc.type !== 'FeatureCollection') return
+      const clone = this._drawLayerFeatures[index]
+      if (this._drawLayer && clone) {
+        this._drawLayer.getSource().removeFeature(clone)
+        if (this._selectedDrawFeature === clone) {
+          this._selectedDrawFeature = null
+          this.$set(this.layerPickerSelectedIndex, name, null)
+        }
+      }
+      this._drawLayerFeatures.splice(index, 1)
+      this._layerOlFeatures.splice(index, 1)
+      const selectedIdx = this.layerPickerSelectedIndex[name]
+      if (selectedIdx !== null && selectedIdx > index) {
+        this.$set(this.layerPickerSelectedIndex, name, selectedIdx - 1)
+      }
+      const newFeatures = fc.features.slice()
+      newFeatures.splice(index, 1)
+      if (newFeatures.length === 0) {
+        this.clearGeometry(name)
+      } else {
+        this.$set(this.formData, name, { type: 'FeatureCollection', features: newFeatures })
+      }
     },
     getFormValues () {
       const values = {}
@@ -870,6 +971,31 @@ export default {
     border-radius: 4px;
     padding: 8px;
     background: rgba(0,0,0,0.02);
+    .layer-features-toggle {
+      gap: 6px;
+      cursor: pointer;
+      padding: 3px 2px;
+      font-size: 0.82em;
+      opacity: 0.75;
+      user-select: none;
+      margin-top: 4px;
+      &:hover { opacity: 1 }
+      .toggle-icon { transition: transform 0.15s }
+    }
+    .layer-features-list {
+      max-height: 180px;
+      overflow-y: auto;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      margin-top: 4px;
+    }
+    .layer-feature-item {
+      font-size: 0.82em;
+      padding: 2px 4px 2px 6px;
+      gap: 4px;
+      cursor: pointer;
+      &:hover { background: rgba(0,0,0,0.04) }
+      &.selected { background: rgba(3, 169, 244, 0.12) }
+    }
   }
   .feature-picker {
     border: 1px solid rgba(0,0,0,0.15);

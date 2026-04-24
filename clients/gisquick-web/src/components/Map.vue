@@ -92,7 +92,7 @@
       >
         <div class="f-col">
           <portal-target name="main-panel-top"/>
-          <content-panel @executed="onProcessExecuted"/>
+          <content-panel @executed="onProcessExecuted" @identify-feature="onIdentifyFeature"/>
         </div>
       </div>
     </transition>
@@ -186,6 +186,9 @@ export default {
     this.$store.commit('clearResultLayers')
   },
   methods: {
+    onIdentifyFeature ({ feature, coord }) {
+      this.$refs.tools.getActiveComponent()?.showFeature(feature, coord)
+    },
     async onProcessExecuted ({ processId, result, owsUrl }) {
       if (owsUrl) {
         let wfsLayerNames = new Set()
