@@ -95,18 +95,10 @@
                     item-text="title"
                     item-value="name"
                     :value="selectedLayerName"
-                    placeholder="Select a layer…"
-                    @input="selectedLayerName = $event"
-                  />
-                  <v-btn
-                    class="small mt-1"
-                    color="primary"
                     :loading="fetchingLayer"
-                    :disabled="!selectedLayerName || fetchingLayer"
-                    @click="fetchLayerFeatures(name, schema, selectedLayerName)"
-                  >
-                    Use layer
-                  </v-btn>
+                    placeholder="Select a layer…"
+                    @input="v => { selectedLayerName = v; fetchLayerFeatures(name, schema, v) }"
+                  />
                 </div>
 
                 <!-- Multi-pick accumulation list -->
