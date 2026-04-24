@@ -143,7 +143,8 @@ export default {
             return
           }
           if (FAILURE_STATUSES.has(status)) {
-            this.executeError = `Process job ended with status: ${status}`
+            const detail = statusData.message ? ` — ${statusData.message}` : ''
+            this.executeError = `Process job ended with status: ${status}${detail}`
             return
           }
         }
@@ -169,7 +170,8 @@ export default {
         const selfUrl = data.links?.find(l => l.rel === 'self')?.href
           || `${this.baseUrl}/jobs/${data.jobID || data.job_id}`
         if (FAILURE_STATUSES.has(data?.status)) {
-          this.executeError = `Process execution failed with status: ${data.status}`
+          const detail = data.message ? ` — ${data.message}` : ''
+          this.executeError = `Process execution failed with status: ${data.status}${detail}`
           return
         }
         this.executing = false
