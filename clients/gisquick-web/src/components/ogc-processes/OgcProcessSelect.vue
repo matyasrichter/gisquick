@@ -61,6 +61,9 @@ export default {
   created () {
     this.fetchProcesses()
   },
+  watch: {
+    baseUrl: 'fetchProcesses'
+  },
   methods: {
     async fetchProcesses () {
       this.loading = true
