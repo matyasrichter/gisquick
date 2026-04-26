@@ -1,6 +1,5 @@
 <template>
   <div class="ogc-process-select f-col">
-    <label v-if="label" class="label" v-text="label"/>
     <div v-if="loading" class="f-row-ac p-2">
       <v-spinner size="20"/>
       <span class="mx-2">Loading processes…</span>
@@ -41,10 +40,6 @@ export default {
     value: {
       type: String,
       default: null
-    },
-    label: {
-      type: String,
-      default: ''
     },
     selectLabel: {
       type: String,

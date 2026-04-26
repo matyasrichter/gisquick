@@ -2,7 +2,6 @@
   <div class="ogc-processes f-col">
     <ogc-process-select
       :base-url="baseUrl"
-      :label="label"
       v-model="selectedProcessId"
     />
     <template v-if="selectedProcessId">
@@ -72,10 +71,6 @@ export default {
     baseUrl: {
       type: String,
       default: 'https://developer.ogc.org/api/processes'
-    },
-    label: {
-      type: String,
-      default: 'OGC Processes'
     }
   },
   data () {
