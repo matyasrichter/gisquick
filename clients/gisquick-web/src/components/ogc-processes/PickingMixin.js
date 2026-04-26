@@ -9,12 +9,19 @@ import { unByKey } from 'ol/Observable'
 import { getCenter } from 'ol/extent'
 import { simpleStyle } from '@/map/styles'
 import { layersFeaturesQuery, layerFeaturesQuery } from '@/map/featureinfo'
-import { getOutputFormat } from './schema'
+import { getOutputFormat, getSchemaGeomType } from './schema'
+
+const ALL_DRAW_GEOM_TYPES = [
+  { value: 'Point', text: 'Point' },
+  { value: 'LineString', text: 'Line' },
+  { value: 'Polygon', text: 'Polygon' }
+]
 
 export default {
   data () {
     return {
       pickTypes: {},
+      drawGeomTypes: {},
       activePickerField: null,
       activePickerMode: null,
       pendingFeatures: [],
@@ -43,9 +50,25 @@ export default {
     setPickType (name, type) {
       if (this.activePickerField === name) this.stopPicking()
       this.$set(this.pickTypes, name, type)
-      if (type !== 'layer') {
+      if (type === 'draw') {
+        if (!this.drawGeomTypes[name]) {
+          const schemaType = getSchemaGeomType(this.inputSchemas[name])
+          this.$set(this.drawGeomTypes, name, schemaType || 'Polygon')
+        }
+      } else if (type !== 'layer') {
         this.togglePicking(name, this.inputSchemas[name])
       }
+    },
+
+    setDrawGeomType (name, type) {
+      this.$set(this.drawGeomTypes, name, type)
+      this.startDraw(name, this.inputSchemas[name])
+    },
+
+    drawGeomTypeOptionsFor (name) {
+      const def = this.inputSchemas[name]
+      const t = def ? getSchemaGeomType(def) : null
+      return t ? ALL_DRAW_GEOM_TYPES.filter(o => o.value === t) : ALL_DRAW_GEOM_TYPES
     },
 
     togglePicking (name, def) {
@@ -64,6 +87,8 @@ export default {
         // multiPickMode must be set AFTER startFeatureSelect (_cleanupPicker resets it)
         this.startFeatureSelect(name, def)
         this.multiPickMode = true
+      } else if (type === 'draw') {
+        this.startDraw(name, def)
       }
     },
 
@@ -256,6 +281,36 @@ export default {
       } finally {
         this.fetchingLayer = false
       }
+    },
+
+    // ── Freehand draw ─────────────────────────────────────────────────────
+    startDraw (name, def) {
+      this._cleanupPicker(true)
+      this.activePickerField = name
+      this.activePickerMode = 'draw'
+      this._pickerDef = def
+
+      const source = new VectorSource()
+      const layer = new OlVectorLayer({ source, zIndex: 999 })
+      this.$map.addLayer(layer)
+      this._drawLayer = layer
+
+      const olType = this.drawGeomTypes[name] || 'Polygon'
+      const draw = new Draw({ source, type: olType })
+      draw.on('drawend', evt => {
+        const mapProj = this.$map.getView().getProjection()
+        const geom = evt.feature.getGeometry()
+        const fmt = getOutputFormat(def)
+        const value = fmt === 'wkt'
+          ? new WKT().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj })
+          : JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
+        this.$set(this.formData, name, value)
+        this._stopDrawInteraction()
+      })
+      this.$map.addInteraction(draw)
+      this._draw = draw
+      this.$map.getViewport().style.cursor = 'crosshair'
+      this._setupEscapeListener()
     },
 
     // ── Bbox pick ─────────────────────────────────────────────────────────

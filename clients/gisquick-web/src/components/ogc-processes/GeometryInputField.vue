@@ -11,9 +11,9 @@
         :value="pickType"
         @input="$emit('set-pick-type', $event)"
       />
-      <!-- Action button — hidden for layer type -->
+      <!-- Action button — hidden for layer type and draw type (shown next to geom type select) -->
       <v-btn
-        v-if="pickType !== 'layer'"
+        v-if="pickType !== 'layer' && pickType !== 'draw'"
         class="small"
         :color="actionBtnColor"
         @click="onActionClick"
@@ -27,6 +27,24 @@
         @click="$emit('clear')"
       >
         <v-icon name="x" size="14"/>
+      </v-btn>
+    </div>
+
+    <!-- Draw geometry type selector + action button -->
+    <div v-if="pickType === 'draw'" class="draw-geom-controls f-row-ac mt-1" style="gap:6px">
+      <v-select
+        class="f-grow"
+        label="Geometry type"
+        :items="drawGeomTypeOptions"
+        :value="drawGeomType"
+        @input="$emit('set-draw-geom-type', $event)"
+      />
+      <v-btn
+        class="small"
+        :color="actionBtnColor"
+        @click="onActionClick"
+      >
+        {{ actionBtnLabel }}
       </v-btn>
     </div>
 
@@ -136,7 +154,8 @@ import { geometrySummary, featureLabel, geoJsonFeatureLabel } from './utils'
 const PICK_TYPE_OPTIONS = [
   { value: 'feature', text: 'Feature' },
   { value: 'multi',   text: 'Multiple features' },
-  { value: 'layer',   text: 'Entire layer' }
+  { value: 'layer',   text: 'Entire layer' },
+  { value: 'draw',    text: 'Draw on map' }
 ]
 
 export default {
@@ -153,7 +172,9 @@ export default {
     queryableLayers: { type: Array, default: () => [] },
     fetchingLayer: { type: Boolean, default: false },
     layerFeaturesOpen: { type: Boolean, default: false },
-    layerPickerSelectedIndex: { default: null }
+    layerPickerSelectedIndex: { default: null },
+    drawGeomType: { type: String, default: 'Polygon' },
+    drawGeomTypeOptions: { type: Array, default: () => [] }
   },
   data () {
     return {
@@ -175,6 +196,7 @@ export default {
       }
       if (this.pickType === 'feature') return this.hasValue ? 'Update' : 'Pick'
       if (this.pickType === 'multi') return this.hasValue ? 'Add more' : 'Pick'
+      if (this.pickType === 'draw') return this.hasValue ? 'Redraw' : 'Draw'
       return 'Pick'
     },
     actionBtnColor () {

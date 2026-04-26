@@ -40,6 +40,14 @@ export function isBboxInput (def) {
   return name.includes('bbox') || name.includes('bounding box')
 }
 
+export function getSchemaGeomType (def) {
+  const ref = (def.schema || {}).$ref || ''
+  const m = ref.match(GEOMETRY_TYPE_RE)
+  if (!m) return null
+  const t = m[0]
+  return t === 'Geometry' ? null : t
+}
+
 export function getOlGeometryType (def) {
   const schema = def.schema || {}
   if (schema.$ref) {

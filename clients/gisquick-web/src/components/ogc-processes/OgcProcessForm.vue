@@ -70,7 +70,10 @@
                 :fetching-layer="fetchingLayer"
                 :layer-features-open="!!layerFeaturesOpen[name]"
                 :layer-picker-selected-index="layerPickerSelectedIndex[name] || null"
+                :draw-geom-type="drawGeomTypes[name] || 'Polygon'"
+                :draw-geom-type-options="drawGeomTypeOptionsFor(name)"
                 @set-pick-type="setPickType(name, $event)"
+                @set-draw-geom-type="setDrawGeomType(name, $event)"
                 @toggle-picking="togglePicking(name, schema)"
                 @finalize-multi-pick="finalizeMultiPick(name)"
                 @remove-picked-feature="removePickedFeature($event, name)"
@@ -200,6 +203,12 @@ export default {
       if (this.activePickerMode === 'bbox') {
         return 'Click and drag to draw a bounding box — press Esc to cancel'
       }
+      if (this.activePickerMode === 'draw') {
+        const t = this.drawGeomTypes[field]
+        return t === 'Point'
+          ? 'Click on the map to place a point — press Esc to cancel'
+          : 'Click to add vertices, double-click to finish — press Esc to cancel'
+      }
       return ''
     }
   },
@@ -213,6 +222,7 @@ export default {
           this.processDesc = null
           this.formData = {}
           this.pickTypes = {}
+          this.drawGeomTypes = {}
         }
       }
     },
