@@ -18,6 +18,9 @@ const ALL_DRAW_GEOM_TYPES = [
 ]
 
 export default {
+  inject: {
+    getResultLayersMap: { from: 'getResultLayersMap', default: null }
+  },
   data () {
     return {
       pickTypes: {},
@@ -133,27 +136,49 @@ export default {
       const { map, pixel, coordinate } = evt
       const mapProj = map.getView().getProjection().getCode()
       const wfsLayers = this.project.overlays.list.filter(l => l.queryable && l.visible && !l.hidden && l.attributes)
-      if (!wfsLayers.length) return
+
+      const resultLayersMap = this.getResultLayersMap?.()
+      const resultWfsOlLayers = []
+      if (resultLayersMap) {
+        for (const [olLayer, meta] of resultLayersMap.entries()) {
+          if (meta.type === 'wfs' && meta.visible) resultWfsOlLayers.push(olLayer)
+        }
+      }
+
+      if (!wfsLayers.length && !resultWfsOlLayers.length) return
 
       const pixelRadius = 8
       const radius = Math.abs(map.getCoordinateFromPixel([pixel[0] + pixelRadius, pixel[1]])[0] - coordinate[0])
-      const geomFilter = { geom: fromCircle(new Circle(coordinate, radius), 6), projection: mapProj }
-      const query = layersFeaturesQuery(wfsLayers, { geomFilter })
-      try {
-        const config = {
-          params: { VERSION: '1.1.0', SERVICE: 'WFS', REQUEST: 'GetFeature', OUTPUTFORMAT: 'GeoJSON', MAXFEATURES: 10 },
-          headers: { 'Content-Type': 'text/xml' }
+      let allFeatures = []
+
+      if (wfsLayers.length) {
+        const geomFilter = { geom: fromCircle(new Circle(coordinate, radius), 6), projection: mapProj }
+        const query = layersFeaturesQuery(wfsLayers, { geomFilter })
+        try {
+          const config = {
+            params: { VERSION: '1.1.0', SERVICE: 'WFS', REQUEST: 'GetFeature', OUTPUTFORMAT: 'GeoJSON', MAXFEATURES: 10 },
+            headers: { 'Content-Type': 'text/xml' }
+          }
+          const { data } = await this.$http.post(this.project.config.ows_url, query, config)
+          allFeatures = allFeatures.concat(new GeoJSON().readFeatures(data, { featureProjection: mapProj }))
+        } catch (e) {
+          console.error('Feature query failed', e)
         }
-        const { data } = await this.$http.post(this.project.config.ows_url, query, config)
-        const features = new GeoJSON().readFeatures(data, { featureProjection: mapProj })
-        if (!features.length) return
-        if (this.multiPickMode) {
-          features.length === 1 ? this._addToMultiPick(name, features[0]) : (this.pendingFeatures = features)
-        } else {
-          features.length === 1 ? this.applyPendingFeature(name, def, features[0]) : (this.pendingFeatures = features)
-        }
-      } catch (e) {
-        console.error('Feature query failed', e)
+      }
+
+      if (resultWfsOlLayers.length) {
+        const hitFeatures = map.getFeaturesAtPixel(pixel, {
+          hitTolerance: pixelRadius,
+          layerFilter: l => resultWfsOlLayers.includes(l)
+        })
+        if (hitFeatures) allFeatures = allFeatures.concat(hitFeatures)
+      }
+
+      if (!allFeatures.length) return
+      if (this.multiPickMode) {
+        allFeatures.length === 1 ? this._addToMultiPick(name, allFeatures[0]) : (this.pendingFeatures = allFeatures)
+      } else {
+        allFeatures.length === 1 ? this.applyPendingFeature(name, def, allFeatures[0]) : (this.pendingFeatures = allFeatures)
       }
     },
 
@@ -245,13 +270,27 @@ export default {
       this.fetchingLayer = true
       try {
         const mapProj = this.$map.getView().getProjection().getCode()
-        const query = layerFeaturesQuery(layer, {})
-        const config = {
-          params: { VERSION: '1.1.0', SERVICE: 'WFS', REQUEST: 'GetFeature', OUTPUTFORMAT: 'GeoJSON', MAXFEATURES: 500 },
-          headers: { 'Content-Type': 'text/xml' }
+        let features
+
+        if (layer.isResultLayer) {
+          const layersMap = this.getResultLayersMap?.()
+          if (!layersMap) return
+          let olLayer = null
+          for (const [lyr, meta] of layersMap.entries()) {
+            if (meta.id === layerName) { olLayer = lyr; break }
+          }
+          if (!olLayer) return
+          features = olLayer.getSource().getFeatures()
+        } else {
+          const query = layerFeaturesQuery(layer, {})
+          const config = {
+            params: { VERSION: '1.1.0', SERVICE: 'WFS', REQUEST: 'GetFeature', OUTPUTFORMAT: 'GeoJSON', MAXFEATURES: 500 },
+            headers: { 'Content-Type': 'text/xml' }
+          }
+          const { data } = await this.$http.post(this.project.config.ows_url, query, config)
+          features = new GeoJSON().readFeatures(data, { featureProjection: mapProj })
         }
-        const { data } = await this.$http.post(this.project.config.ows_url, query, config)
-        const features = new GeoJSON().readFeatures(data, { featureProjection: mapProj })
+
         if (!features.length) return
         const fmt = new GeoJSON()
         const featureList = features.map(f => ({

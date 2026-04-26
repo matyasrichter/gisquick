@@ -164,7 +164,7 @@ export default {
     }
   },
   computed: {
-    ...mapState(['project']),
+    ...mapState(['project', 'resultLayers']),
     inputSchemas () {
       if (!this.processDesc?.inputs) return {}
       const result = {}
@@ -185,8 +185,14 @@ export default {
         .filter(([, def]) => (def.minOccurs ?? 0) > 0)
         .map(([name]) => name)
     },
+    resultPickableLayers () {
+      return (this.resultLayers || [])
+        .filter(l => l.type === 'wfs')
+        .map(l => ({ name: l.id, title: l.name, isResultLayer: true }))
+    },
     queryableLayers () {
-      return (this.project?.overlays?.list || []).filter(l => l.queryable && !l.hidden)
+      const base = (this.project?.overlays?.list || []).filter(l => l.queryable && !l.hidden)
+      return [...base, ...this.resultPickableLayers]
     },
     pickingHintText () {
       if (!this.activePickerField) return ''
