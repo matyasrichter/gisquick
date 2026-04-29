@@ -70,7 +70,7 @@
                 :filter="filterMode ? filterText : ''"
                 :collapsed.sync="collapsedOverlays"
               />
-              <result-layers-group/>
+              <result-layers-group :attribute-table-disabled="attributeTableDisabled" @show-result-attribute-table="$emit('show-result-attribute-table', $event)"/>
             </scroll-area>
           </template>
         </v-tabs>

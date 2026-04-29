@@ -92,7 +92,7 @@
       >
         <div class="f-col">
           <portal-target name="main-panel-top"/>
-          <content-panel @executed="onProcessExecuted" @identify-feature="onIdentifyFeature"/>
+          <content-panel @executed="onProcessExecuted" @identify-feature="onIdentifyFeature" @show-result-attribute-table="onShowResultAttributeTable"/>
         </div>
       </div>
     </transition>
@@ -189,16 +189,29 @@ export default {
     onIdentifyFeature ({ feature, coord }) {
       this.$refs.tools.getActiveComponent()?.showFeature(feature, coord)
     },
+    onShowResultAttributeTable (layer) {
+      const olLayer = this._olResultLayers[layer.id]
+      // Freeze prevents Vue from deeply observing OL Feature objects, which would
+      // trigger Vuex strict-mode errors as OL mutates internal properties during observation.
+      const features = Object.freeze(olLayer?.getSource?.()?.getFeatures?.() ?? [])
+      this.$store.commit('attributeTable/layer', layer)
+      this.$nextTick(() => {
+        this.$store.commit('attributeTable/features', features)
+        this.$store.commit('activeTool', 'attribute-table')
+      })
+    },
     async onProcessExecuted ({ processId, result, owsUrl }) {
+      const groupId = `${processId}-${Date.now()}`
+      const groupLabel = processId
       if (owsUrl) {
         let wfsLayerNames = new Set()
         try {
-          wfsLayerNames = await this._loadWfsLayers(processId, owsUrl)
+          wfsLayerNames = await this._loadWfsLayers(processId, owsUrl, groupId, groupLabel)
         } catch (e) {
           console.error('Failed to load WFS layers from job result:', e)
         }
         try {
-          await this._loadWmsLayers(processId, owsUrl, wfsLayerNames)
+          await this._loadWmsLayers(processId, owsUrl, wfsLayerNames, groupId, groupLabel)
         } catch (e) {
           console.error('Failed to load WMS layers from job result:', e)
         }
@@ -212,7 +225,7 @@ export default {
         })
       }
     },
-    async _loadWmsLayers (processId, owsUrl, skipNames = new Set()) {
+    async _loadWmsLayers (processId, owsUrl, skipNames = new Set(), groupId, groupLabel) {
       const { data } = await axios.get(owsUrl, {
         params: { SERVICE: 'WMS', REQUEST: 'GetCapabilities', VERSION: '1.3.0' }
       })
@@ -235,11 +248,14 @@ export default {
           name: layerCaps.Title || layerName,
           type: 'wms',
           visible: true,
-          opacity: 255
+          opacity: 255,
+          groupId,
+          groupLabel,
+          queryable: false
         })
       }
     },
-    async _loadWfsLayers (processId, owsUrl) {
+    async _loadWfsLayers (processId, owsUrl, groupId, groupLabel) {
       const { data } = await axios.get(owsUrl, {
         params: { SERVICE: 'WFS', REQUEST: 'GetCapabilities', VERSION: '1.1.0' }
       })
@@ -268,16 +284,36 @@ export default {
         } catch (e) {
           console.error('WFS load failed for', layerName, e)
         }
+        const loadedFeatures = source.getFeatures()
+        // Patch methods expected by table.js before features are ever observed by Vue.
+        // Done here (not at attribute-table open time) so the OL objects are still plain
+        // and unobserved — patching after Vuex observes them would trigger strict-mode errors.
+        loadedFeatures.forEach(f => {
+          Object.defineProperty(f, 'getFormattedProperties', { configurable: true, value: () => ({}) })
+          Object.defineProperty(f, 'getFormatted', { configurable: true, value: key => f.get(key) })
+        })
         const olLayer = new VectorLayer({ source, visible: true })
         this.$map.addLayer(olLayer)
         const id = `result-${processId}-wfs-${layerName}-${Date.now()}`
         this._olResultLayers[id] = olLayer
+        const propKeys = loadedFeatures.length
+          ? Object.keys(loadedFeatures[0].getProperties()).filter(k => k !== 'geometry')
+          : []
+        const geomType = loadedFeatures[0]?.getGeometry()?.getType() ?? null
         this.$store.commit('addResultLayer', {
           id,
           name: title || layerName,
           type: 'wfs',
           visible: true,
-          opacity: 255
+          opacity: 255,
+          groupId,
+          groupLabel,
+          attributes: propKeys.map(name => ({ name, type: 'text' })),
+          attr_table_fields: propKeys,
+          queryable: propKeys.length > 0,
+          relations: [],
+          wkb_type: geomType,
+          _skipFetch: true
         })
         addedNames.add(layerName)
       }

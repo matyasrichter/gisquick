@@ -45,7 +45,7 @@ export default {
     layer: {
       immediate: true,
       handler (layer) {
-        if (layer) {
+        if (layer && !layer._skipFetch) {
           this.fetchFeatures()
         }
       }
@@ -96,6 +96,7 @@ export default {
 
     fetchFeatures: debounce(async function (page = 1, lastQuery = false) {
     // async fetchFeatures (page = 1, lastQuery = false) {
+      if (this.layer?._skipFetch) return
       // console.log('fetching features, page:', page, 'sort:', JSON.stringify(this.sortBy))
       let query
       let queryParams

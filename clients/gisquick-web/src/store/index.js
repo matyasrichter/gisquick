@@ -186,6 +186,9 @@ export default new Vuex.Store({
       const idx = state.resultArtifacts.indexOf(artifact)
       if (idx !== -1) state.resultArtifacts.splice(idx, 1)
     },
+    removeResultGroup (state, groupId) {
+      state.resultLayers = state.resultLayers.filter(l => l.groupId !== groupId)
+    },
     resultLayerVisibility (state, { layer, visible }) {
       layer.visible = visible
     },
