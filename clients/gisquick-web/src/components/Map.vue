@@ -202,7 +202,8 @@ export default {
     },
     async onProcessExecuted ({ processId, result, owsUrl }) {
       const groupId = `${processId}-${Date.now()}`
-      const groupLabel = processId
+      console.log(processId)
+      const groupLabel = `${processId.split(':').at(-1)} (${Intl.DateTimeFormat(undefined, {timeStyle: 'short', dateStyle: undefined}).format(new Date())})`
       if (owsUrl) {
         let wfsLayerNames = new Set()
         try {
