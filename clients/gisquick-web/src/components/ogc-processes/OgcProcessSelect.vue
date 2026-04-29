@@ -10,6 +10,7 @@
     </div>
     <v-select
       v-else
+      class="trim-text"
       :label="selectLabel"
       :items="processes"
       :value="value"
@@ -25,7 +26,7 @@
         </div>
       </template>
       <template #selection="{ item }">
-        <span v-text="getItemDisplayText(item)"/>
+        <span v-text="item.title || item.id || ''" class="value"/>
       </template>
     </v-select>
   </div>
@@ -80,15 +81,6 @@ export default {
       } finally {
         this.loading = false
       }
-    },
-    getItemDisplayText (item) {
-      if (!item) return ''
-      const result = item.title || item.id
-      if (!result) return ''
-      if (result.length > 29) {
-        return result.slice(0, 31) + '...'
-      }
-      return result
     }
   }
 }
