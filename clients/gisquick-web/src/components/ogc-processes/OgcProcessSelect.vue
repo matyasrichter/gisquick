@@ -24,6 +24,9 @@
           <span v-if="item.description" class="description" v-text="item.description"/>
         </div>
       </template>
+      <template #selection="{ item }">
+        <span v-text="getItemDisplayText(item)"/>
+      </template>
     </v-select>
   </div>
 </template>
@@ -77,6 +80,15 @@ export default {
       } finally {
         this.loading = false
       }
+    },
+    getItemDisplayText (item) {
+      if (!item) return ''
+      const result = item.title || item.id
+      if (!result) return ''
+      if (result.length > 29) {
+        return result.slice(0, 31) + '...'
+      }
+      return result
     }
   }
 }
