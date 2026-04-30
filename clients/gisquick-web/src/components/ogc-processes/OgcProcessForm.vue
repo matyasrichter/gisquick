@@ -142,10 +142,13 @@
 <script>
 import { mapState } from 'vuex'
 import axios from 'axios'
+import GeoJSON from 'ol/format/GeoJSON'
+import GML3 from 'ol/format/GML3'
+import WKT from 'ol/format/WKT'
 import PickingMixin from './PickingMixin'
 import GeometryInputField from './GeometryInputField.vue'
 import BboxInputField from './BboxInputField.vue'
-import { resolveType, isNumericType, isGeometryInput, isBboxInput } from './schema'
+import { resolveType, isNumericType, isGeometryInput, isBboxInput, getOutputFormat } from './schema'
 
 export default {
   components: { GeometryInputField, BboxInputField },
@@ -302,10 +305,33 @@ export default {
     fieldPlaceholder (schema) { return schema.description || '' },
     isRequired (name) { return this.requiredInputs.includes(name) },
 
+    _serializeInput (value, def) {
+      if (value === null || value === undefined) return value
+      const fmt = getOutputFormat(def)
+      if (fmt === 'geojson') return value
+
+      if (value.type === 'FeatureCollection') {
+        const features = new GeoJSON().readFeatures(value, { dataProjection: 'EPSG:4326', featureProjection: 'EPSG:4326' })
+        if (fmt === 'gml') return new GML3().writeFeatures(features, { featureType: 'feature', featureNS: 'http://www.opengis.net/gml' })
+        return value
+      }
+
+      if (value.type) {
+        const geom = new GeoJSON().readGeometry(value, { dataProjection: 'EPSG:4326', featureProjection: 'EPSG:4326' })
+        if (fmt === 'gml') return new GML3().writeGeometry(geom)
+        if (fmt === 'wkt') return new WKT().writeGeometry(geom)
+      }
+
+      return value
+    },
+
     getFormValues () {
       const values = {}
       for (const [key, val] of Object.entries(this.formData)) {
-        if (val !== null && val !== undefined && val !== '') values[key] = val
+        if (val !== null && val !== undefined && val !== '') {
+          const def = this.inputSchemas[key]
+          values[key] = def ? this._serializeInput(val, def) : val
+        }
       }
       return values
     }

@@ -1,5 +1,6 @@
-export const GEOMETRY_FORMATS = ['geojson', 'wkt', 'ewkt', 'wkb', 'ewkb']
+export const GEOMETRY_FORMATS = ['geojson', 'wkt', 'ewkt', 'wkb', 'ewkb', 'gml']
 export const WKT_FORMATS = ['wkt', 'ewkt', 'wkb', 'ewkb']
+export const GML_FORMATS = ['gml']
 export const GEOMETRY_TYPE_RE = /Point|LineString|Polygon|MultiPoint|MultiLineString|MultiPolygon|Geometry/i
 
 export const POLL_INTERVAL_MS = 2000
@@ -23,10 +24,12 @@ export function isNumericType (schema) {
   return t === 'number' || t === 'integer'
 }
 
+const GEOMETRY_MEDIA_TYPES = ['application/geo+json', 'application/gml+xml']
+
 export function isGeometryInput (def) {
   const schema = def.schema || {}
   if (GEOMETRY_FORMATS.includes(schema.format)) return true
-  if (schema.contentMediaType === 'application/geo+json') return true
+  if (Array.isArray(schema.contentMediaTypes) && schema.contentMediaTypes.some(m => GEOMETRY_MEDIA_TYPES.some(g => m.startsWith(g)))) return true
   if (schema.$ref && GEOMETRY_TYPE_RE.test(schema.$ref)) return true
   const text = ((def.title || '') + ' ' + (def.description || '')).toLowerCase()
   return /\b(geometry|point|polygon|linestring|line string)\b/.test(text)
@@ -66,5 +69,7 @@ export function getOlGeometryType (def) {
 
 export function getOutputFormat (def) {
   const schema = def.schema || {}
-  return WKT_FORMATS.includes(schema.format) ? 'wkt' : 'geojson'
+  if (GML_FORMATS.includes(schema.format)) return 'gml'
+  if (WKT_FORMATS.includes(schema.format)) return 'wkt'
+  return 'geojson'
 }

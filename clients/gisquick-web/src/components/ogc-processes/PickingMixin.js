@@ -1,5 +1,4 @@
 import GeoJSON from 'ol/format/GeoJSON'
-import WKT from 'ol/format/WKT'
 import Draw, { createBox } from 'ol/interaction/Draw'
 import VectorSource from 'ol/source/Vector'
 import OlVectorLayer from 'ol/layer/Vector'
@@ -9,7 +8,7 @@ import { unByKey } from 'ol/Observable'
 import { getCenter } from 'ol/extent'
 import { simpleStyle } from '@/map/styles'
 import { layersFeaturesQuery, layerFeaturesQuery } from '@/map/featureinfo'
-import { getOutputFormat, getSchemaGeomType } from './schema'
+import { getSchemaGeomType } from './schema'
 
 const ALL_DRAW_GEOM_TYPES = [
   { value: 'Point', text: 'Point' },
@@ -198,10 +197,7 @@ export default {
     applyPendingFeature (name, def, feature) {
       const mapProj = this.$map.getView().getProjection()
       const geom = feature.getGeometry()
-      const fmt = getOutputFormat(def)
-      const value = fmt === 'wkt'
-        ? new WKT().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj })
-        : JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
+      const value = JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
       if (!this._drawLayer) {
         const source = new VectorSource()
         const layer = new OlVectorLayer({ source, zIndex: 999 })
@@ -339,10 +335,7 @@ export default {
       draw.on('drawend', evt => {
         const mapProj = this.$map.getView().getProjection()
         const geom = evt.feature.getGeometry()
-        const fmt = getOutputFormat(def)
-        const value = fmt === 'wkt'
-          ? new WKT().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj })
-          : JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
+        const value = JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
         this.$set(this.formData, name, value)
         this._stopDrawInteraction()
       })
