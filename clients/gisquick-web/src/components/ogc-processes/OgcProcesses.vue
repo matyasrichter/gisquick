@@ -148,6 +148,7 @@ export default {
 
     async execute () {
       this.$refs.processForm?.finalizeActivePicking()
+      if (this.$refs.processForm && !this.$refs.processForm.validate()) return
       this.executing = true
       this.result = null
       this.executeError = null

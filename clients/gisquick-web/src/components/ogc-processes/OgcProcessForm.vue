@@ -18,6 +18,9 @@
         <span class="f-grow">{{ pickingHintText }}</span>
         <v-btn class="small flat ml-2" @click="stopPicking">Cancel</v-btn>
       </div>
+      <div v-if="validationErrors.length" class="validation-errors f-col mt-1">
+        <span v-for="err in validationErrors" :key="err" class="validation-error">{{ err }}</span>
+      </div>
       <div class="inputs-form f-col">
         <template v-for="(schema, name) in inputSchemas">
           <div :key="name" class="form-field">
@@ -31,8 +34,8 @@
               />
             </template>
 
-            <!-- Enum -->
-            <template v-else-if="schema.schema.enum">
+            <!-- Enum (single) -->
+            <template v-else-if="schema.schema.enum && schema.maxOccurs === 1">
               <v-select
                 :label="fieldLabel(schema, name)"
                 :items="schema.schema.enum"
@@ -42,16 +45,52 @@
               />
             </template>
 
+            <!-- Enum (multi) -->
+            <template v-else-if="schema.schema.enum">
+              <v-select
+                :label="fieldLabel(schema, name)"
+                :items="schema.schema.enum"
+                :value="formData[name]"
+                placeholder="Select one or more…"
+                multiple
+                @input="updateField(name, $event)"
+              >
+                <template #selection="{ items }">
+                  <span v-if="items.size === 1" class="value f-grow" v-text="[...items][0].text"/>
+                  <span v-else-if="items.size > 1" class="value f-grow">
+                    {{ [...items][0].text }} <span class="multi-count">+{{ items.size - 1 }} more</span>
+                  </span>
+                </template>
+                <template #item="{ item, selected }">
+                  <span class="item-check" :class="{ checked: selected }">
+                    <svg v-if="selected" width="10" height="8" viewBox="0 0 10 8">
+                      <polyline points="1,4 4,7 9,1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </span>
+                  <span class="f-grow m-2" v-text="item.text"/>
+                </template>
+              </v-select>
+            </template>
+
             <!-- Numeric -->
             <template v-else-if="isNumericType(schema.schema)">
-              <v-text-field
-                type="number"
-                :label="fieldLabel(schema, name)"
+              <array-input
                 :value="formData[name]"
-                :placeholder="fieldPlaceholder(schema)"
-                :step="resolveType(schema.schema) === 'integer' ? 1 : 'any'"
-                @input="updateField(name, parseNumber($event, resolveType(schema.schema)))"
-              />
+                :min-occurs="schema.minOccurs"
+                :max-occurs="schema.maxOccurs"
+                @input="updateField(name, $event)"
+              >
+                <template #default="{ item, index, update }">
+                  <v-text-field
+                    type="number"
+                    :label="index === 0 ? fieldLabel(schema, name) : ''"
+                    :value="item"
+                    :placeholder="fieldPlaceholder(schema)"
+                    :step="resolveType(schema.schema) === 'integer' ? 1 : 'any'"
+                    @input="update(parseNumber($event, resolveType(schema.schema)))"
+                  />
+                </template>
+              </array-input>
             </template>
 
             <!-- Geometry -->
@@ -121,13 +160,22 @@
 
             <!-- String / default -->
             <template v-else>
-              <v-text-field
-                :label="fieldLabel(schema, name)"
+              <array-input
                 :value="formData[name]"
-                :placeholder="fieldPlaceholder(schema)"
-                :multiline="schema.schema.contentMediaType === 'application/json'"
+                :min-occurs="schema.minOccurs"
+                :max-occurs="schema.maxOccurs"
                 @input="updateField(name, $event)"
-              />
+              >
+                <template #default="{ item, index, update }">
+                  <v-text-field
+                    :label="index === 0 ? fieldLabel(schema, name) : ''"
+                    :value="item"
+                    :placeholder="fieldPlaceholder(schema)"
+                    :multiline="schema.schema.contentMediaType === 'application/json'"
+                    @input="update($event)"
+                  />
+                </template>
+              </array-input>
             </template>
 
             <span v-if="schema.description" class="field-description" v-text="schema.description"/>
@@ -148,10 +196,11 @@ import WKT from 'ol/format/WKT'
 import PickingMixin from './PickingMixin'
 import GeometryInputField from './GeometryInputField.vue'
 import BboxInputField from './BboxInputField.vue'
+import ArrayInput from './ArrayInput.vue'
 import { resolveType, isNumericType, isGeometryInput, isBboxInput, getOutputFormat } from './schema'
 
 export default {
-  components: { GeometryInputField, BboxInputField },
+  components: { GeometryInputField, BboxInputField, ArrayInput },
   mixins: [PickingMixin],
   props: {
     baseUrl: { type: String, required: true },
@@ -163,7 +212,8 @@ export default {
       processDesc: null,
       loading: false,
       error: null,
-      formData: {}
+      formData: {},
+      validationErrors: []
     }
   },
   computed: {
@@ -230,6 +280,7 @@ export default {
         } else {
           this.processDesc = null
           this.formData = {}
+          this.validationErrors = []
           this.pickTypes = {}
           this.drawGeomTypes = {}
         }
@@ -238,6 +289,7 @@ export default {
     formData: {
       deep: true,
       handler (data) {
+        if (this.validationErrors.length) this.validationErrors = []
         this.$emit('input', { ...data })
       }
     }
@@ -269,11 +321,20 @@ export default {
       if (desc.inputs) {
         for (const [name, def] of Object.entries(desc.inputs)) {
           const schema = def.schema || {}
-          if (schema.default !== undefined) {
+          const maxOccurs = def.maxOccurs ?? 1
+          const inputSchema = { schema, minOccurs: def.minOccurs ?? 0, maxOccurs }
+          const isMultiValue = maxOccurs !== 1 &&
+            !isGeometryInput(inputSchema) &&
+            !isBboxInput(inputSchema) &&
+            resolveType(schema) !== 'boolean' &&
+            schema.type !== 'object'
+          if (isMultiValue) {
+            data[name] = []
+          } else if (schema.default !== undefined) {
             data[name] = schema.default
           } else if (resolveType(schema) === 'boolean') {
             data[name] = false
-          } else if (isBboxInput(def)) {
+          } else if (isBboxInput(inputSchema)) {
             data[name] = [null, null, null, null]
           }
         }
@@ -328,12 +389,36 @@ export default {
     getFormValues () {
       const values = {}
       for (const [key, val] of Object.entries(this.formData)) {
-        if (val !== null && val !== undefined && val !== '') {
-          const def = this.inputSchemas[key]
+        const def = this.inputSchemas[key]
+        if (Array.isArray(val) && def?.maxOccurs !== 1) {
+          const filtered = val.filter(v => v !== null && v !== undefined && v !== '')
+          if (filtered.length > 0) {
+            values[key] = def ? filtered.map(v => this._serializeInput(v, def)) : filtered
+          }
+        } else if (val !== null && val !== undefined && val !== '') {
           values[key] = def ? this._serializeInput(val, def) : val
         }
       }
       return values
+    },
+
+    validate () {
+      const errors = []
+      for (const [name, schema] of Object.entries(this.inputSchemas)) {
+        if (schema.minOccurs > 0) {
+          const val = this.formData[name]
+          if (Array.isArray(val) && schema.maxOccurs !== 1) {
+            const filled = val.filter(v => v !== null && v !== undefined && v !== '')
+            if (filled.length < schema.minOccurs) {
+              errors.push(`"${schema.title || name}": at least ${schema.minOccurs} value(s) required`)
+            }
+          } else if (val === null || val === undefined || val === '') {
+            errors.push(`"${schema.title || name}" is required`)
+          }
+        }
+      }
+      this.validationErrors = errors
+      return errors.length === 0
     }
   }
 }
@@ -389,6 +474,36 @@ export default {
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .validation-errors {
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+  .validation-error {
+    font-size: 0.82em;
+    color: var(--color-red, #d32f2f);
+  }
+  .multi-count {
+    font-size: 0.85em;
+    opacity: 0.75;
+  }
+  .item-check {
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.4;
+    transition: opacity 0.15s, background 0.15s;
+    &.checked {
+      background: var(--color, #1976d2);
+      border-color: var(--color, #1976d2);
+      color: #fff;
+      opacity: 1;
+    }
   }
 }
 </style>
