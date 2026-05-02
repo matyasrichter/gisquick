@@ -22,38 +22,38 @@
         <span v-for="err in validationErrors" :key="err" class="validation-error">{{ err }}</span>
       </div>
       <div class="inputs-form f-col">
-        <template v-for="(schema, name) in inputSchemas">
-          <div :key="name" class="form-field">
+        <template v-for="schema in inputSchemas">
+          <div :key="schema.name" class="form-field">
 
             <!-- Boolean -->
             <template v-if="resolveType(schema.schema) === 'boolean'">
               <v-checkbox
-                :label="schema.title || name"
-                :value="formData[name] || false"
-                @input="updateField(name, $event)"
+                :label="schema.title || schema.name"
+                :value="formData[schema.name] || false"
+                @input="updateField(schema.name, $event)"
               />
             </template>
 
             <!-- Enum (single) -->
             <template v-else-if="schema.schema.enum && schema.maxOccurs === 1">
               <v-select
-                :label="fieldLabel(schema, name)"
+                :label="fieldLabel(schema, schema.name)"
                 :items="schema.schema.enum"
-                :value="formData[name]"
+                :value="formData[schema.name]"
                 :placeholder="fieldPlaceholder(schema)"
-                @input="updateField(name, $event)"
+                @input="updateField(schema.name, $event)"
               />
             </template>
 
             <!-- Enum (multi) -->
             <template v-else-if="schema.schema.enum">
               <v-select
-                :label="fieldLabel(schema, name)"
+                :label="fieldLabel(schema, schema.name)"
                 :items="schema.schema.enum"
-                :value="formData[name]"
+                :value="formData[schema.name]"
                 placeholder="Select one or more…"
                 multiple
-                @input="updateField(name, $event)"
+                @input="updateField(schema.name, $event)"
               >
                 <template #selection="{ items }">
                   <span v-if="items.size === 1" class="value f-grow" v-text="[...items][0].text"/>
@@ -75,15 +75,15 @@
             <!-- Numeric -->
             <template v-else-if="isNumericType(schema.schema)">
               <array-input
-                :value="formData[name]"
+                :value="formData[schema.name]"
                 :min-occurs="schema.minOccurs"
                 :max-occurs="schema.maxOccurs"
-                @input="updateField(name, $event)"
+                @input="updateField(schema.name, $event)"
               >
                 <template #default="{ item, index, update }">
                   <v-text-field
                     type="number"
-                    :label="index === 0 ? fieldLabel(schema, name) : ''"
+                    :label="index === 0 ? fieldLabel(schema, schema.name) : ''"
                     :value="item"
                     :placeholder="fieldPlaceholder(schema)"
                     :step="resolveType(schema.schema) === 'integer' ? 1 : 'any'"
@@ -96,10 +96,10 @@
             <!-- Geometry -->
             <template v-else-if="isGeometryInput(schema)">
               <geometry-input-field
-                :field-name="name"
-                :label="fieldLabel(schema, name)"
-                :value="formData[name]"
-                :pick-type="pickTypes[name] || 'feature'"
+                :field-name="schema.name"
+                :label="fieldLabel(schema, schema.name)"
+                :value="formData[schema.name]"
+                :pick-type="pickTypes[schema.name] || 'feature'"
                 :active-picker-field="activePickerField"
                 :active-picker-mode="activePickerMode"
                 :multi-pick-mode="multiPickMode"
@@ -107,51 +107,51 @@
                 :pending-features="pendingFeatures"
                 :queryable-layers="queryableLayers"
                 :fetching-layer="fetchingLayer"
-                :layer-features-open="!!layerFeaturesOpen[name]"
-                :layer-picker-selected-index="layerPickerSelectedIndex[name] || null"
-                :draw-geom-type="drawGeomTypes[name] || 'Polygon'"
-                :draw-geom-type-options="drawGeomTypeOptionsFor(name)"
-                @set-pick-type="setPickType(name, $event)"
-                @set-draw-geom-type="setDrawGeomType(name, $event)"
-                @toggle-picking="togglePicking(name, schema)"
-                @finalize-multi-pick="finalizeMultiPick(name)"
-                @remove-picked-feature="removePickedFeature($event, name)"
-                @apply-pending-feature="applyPendingFeature(name, schema, $event)"
-                @add-to-multi-pick="_addToMultiPick(name, $event)"
-                @click-layer-feature="clickLayerFeature(name, $event)"
-                @remove-layer-feature="removeLayerFeature(name, $event)"
-                @fetch-layer-features="fetchLayerFeatures(name, schema, $event)"
-                @toggle-layer-features-open="$set(layerFeaturesOpen, name, !layerFeaturesOpen[name])"
-                @clear="clearGeometry(name)"
+                :layer-features-open="!!layerFeaturesOpen[schema.name]"
+                :layer-picker-selected-index="layerPickerSelectedIndex[schema.name] || null"
+                :draw-geom-type="drawGeomTypes[schema.name] || 'Polygon'"
+                :draw-geom-type-options="drawGeomTypeOptionsFor(schema.name)"
+                @set-pick-type="setPickType(schema.name, $event)"
+                @set-draw-geom-type="setDrawGeomType(schema.name, $event)"
+                @toggle-picking="togglePicking(schema.name, schema)"
+                @finalize-multi-pick="finalizeMultiPick(schema.name)"
+                @remove-picked-feature="removePickedFeature($event, schema.name)"
+                @apply-pending-feature="applyPendingFeature(schema.name, schema, $event)"
+                @add-to-multi-pick="_addToMultiPick(schema.name, $event)"
+                @click-layer-feature="clickLayerFeature(schema.name, $event)"
+                @remove-layer-feature="removeLayerFeature(schema.name, $event)"
+                @fetch-layer-features="fetchLayerFeatures(schema.name, schema, $event)"
+                @toggle-layer-features-open="$set(layerFeaturesOpen, schema.name, !layerFeaturesOpen[schema.name])"
+                @clear="clearGeometry(schema.name)"
               />
             </template>
 
             <!-- Bounding box -->
             <template v-else-if="isBboxInput(schema)">
               <bbox-input-field
-                :label="fieldLabel(schema, name)"
-                :value="formData[name]"
-                :picking="activePickerField === name && activePickerMode === 'bbox'"
-                @start-pick="startBboxPick(name)"
+                :label="fieldLabel(schema, schema.name)"
+                :value="formData[schema.name]"
+                :picking="activePickerField === schema.name && activePickerMode === 'bbox'"
+                @start-pick="startBboxPick(schema.name)"
                 @stop-pick="stopPicking()"
-                @use-view-extent="useViewExtent(name)"
-                @clear="clearBbox(name)"
-                @input="updateField(name, $event)"
+                @use-view-extent="useViewExtent(schema.name)"
+                @clear="clearBbox(schema.name)"
+                @input="updateField(schema.name, $event)"
               />
             </template>
 
             <!-- Nested object -->
             <template v-else-if="schema.schema.type === 'object'">
               <div class="nested-object f-col">
-                <label class="field-label" v-text="fieldLabel(schema, name)"/>
+                <label class="field-label" v-text="fieldLabel(schema, schema.name)"/>
                 <div class="nested-fields f-col pl-2">
                   <template v-for="(propSchema, propName) in (schema.schema.properties || {})">
                     <v-text-field
                       :key="propName"
                       :label="propSchema.title || propName"
-                      :value="(formData[name] || {})[propName]"
+                      :value="(formData[schema.name] || {})[propName]"
                       :placeholder="propSchema.description || ''"
-                      @input="updateNestedField(name, propName, $event)"
+                      @input="updateNestedField(schema.name, propName, $event)"
                     />
                   </template>
                 </div>
@@ -161,14 +161,14 @@
             <!-- String / default -->
             <template v-else>
               <array-input
-                :value="formData[name]"
+                :value="formData[schema.name]"
                 :min-occurs="schema.minOccurs"
                 :max-occurs="schema.maxOccurs"
-                @input="updateField(name, $event)"
+                @input="updateField(schema.name, $event)"
               >
                 <template #default="{ item, index, update }">
                   <v-text-field
-                    :label="index === 0 ? fieldLabel(schema, name) : ''"
+                    :label="index === 0 ? fieldLabel(schema, schema.name) : ''"
                     :value="item"
                     :placeholder="fieldPlaceholder(schema)"
                     :multiline="schema.schema.contentMediaType === 'application/json'"
@@ -179,7 +179,7 @@
             </template>
 
             <span v-if="schema.description" class="field-description" v-text="schema.description"/>
-            <span v-if="isRequired(name)" class="required-mark">required</span>
+            <span v-if="isRequired(schema.name)" class="required-mark">required</span>
           </div>
         </template>
       </div>
@@ -219,18 +219,20 @@ export default {
   computed: {
     ...mapState(['project', 'resultLayers']),
     inputSchemas () {
-      if (!this.processDesc?.inputs) return {}
-      const result = {}
-      for (const [name, def] of Object.entries(this.processDesc.inputs)) {
-        result[name] = {
-          title: def.title || name,
-          description: def.description || '',
-          schema: def.schema || {},
-          minOccurs: def.minOccurs ?? 0,
-          maxOccurs: def.maxOccurs ?? 1
-        }
-      }
-      return result
+      if (!this.processDesc?.inputs) return []
+      return Object.entries(this.processDesc.inputs).map(([name, def]) => ({
+        name,
+        title: def.title || name,
+        description: def.description || '',
+        schema: def.schema || {},
+        minOccurs: def.minOccurs ?? 0,
+        maxOccurs: def.maxOccurs ?? 1
+      }))
+    },
+    inputSchemasMap () {
+      const map = {}
+      for (const s of this.inputSchemas) map[s.name] = s
+      return map
     },
     requiredInputs () {
       if (!this.processDesc?.inputs) return []
@@ -389,7 +391,7 @@ export default {
     getFormValues () {
       const values = {}
       for (const [key, val] of Object.entries(this.formData)) {
-        const def = this.inputSchemas[key]
+        const def = this.inputSchemasMap[key]
         if (Array.isArray(val) && def?.maxOccurs !== 1) {
           const filtered = val.filter(v => v !== null && v !== undefined && v !== '')
           if (filtered.length > 0) {
@@ -404,7 +406,8 @@ export default {
 
     validate () {
       const errors = []
-      for (const [name, schema] of Object.entries(this.inputSchemas)) {
+      for (const schema of this.inputSchemas) {
+        const name = schema.name
         if (schema.minOccurs > 0) {
           const val = this.formData[name]
           if (Array.isArray(val) && schema.maxOccurs !== 1) {
