@@ -1,6 +1,4 @@
 export const GEOMETRY_FORMATS = ['geojson', 'wkt', 'ewkt', 'wkb', 'ewkb', 'gml']
-export const WKT_FORMATS = ['wkt', 'ewkt', 'wkb', 'ewkb']
-export const GML_FORMATS = ['gml']
 export const GEOMETRY_TYPE_RE = /Point|LineString|Polygon|MultiPoint|MultiLineString|MultiPolygon|Geometry/i
 
 export const POLL_INTERVAL_MS = 2000
@@ -67,9 +65,3 @@ export function getOlGeometryType (def) {
   return 'Point'
 }
 
-export function getOutputFormat (def) {
-  const schema = def.schema || {}
-  if (GML_FORMATS.includes(schema.format)) return 'gml'
-  if (WKT_FORMATS.includes(schema.format)) return 'wkt'
-  return 'geojson'
-}
