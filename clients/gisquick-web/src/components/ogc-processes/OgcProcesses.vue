@@ -12,18 +12,30 @@
         v-model="formValues"
         @identify-feature="$emit('identify-feature', $event)"
       />
-      <div class="actions f-row-ac mt-2">
-        <v-btn
-          color="primary"
-          :loading="executing"
-          :disabled="executing || polling"
-          @click="execute"
-        >
-          Execute
-        </v-btn>
-        <div v-if="polling" class="polling-status f-row-ac ml-2">
-          <v-spinner size="16" width="2" class="mr-1"/>
-          <span class="polling-text">{{ pollingStatus }}</span>
+      <div class="actions f-col mt-2">
+        <div class="f-row-ac" style="gap:8px">
+          <v-btn
+            color="primary"
+            :loading="executing"
+            :disabled="executing || polling"
+            @click="execute"
+          >
+            Execute
+          </v-btn>
+          <template v-if="polling">
+            <div class="job-progress f-col f-grow">
+              <linear-progress
+                :value="jobProgress"
+                :indeterminate="jobProgress === null"
+                color="primary"
+                :width="5"
+              />
+              <div class="progress-footer f-row-ac">
+                <span class="progress-message f-grow">{{ jobMessage || 'Executing…' }}</span>
+                <span class="progress-meta">{{ jobProgress !== null ? jobProgress + '% · ' : '' }}{{ pollingElapsed }}s</span>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
       <div v-if="result" class="result-panel f-col mt-2">
@@ -67,11 +79,12 @@ import axios from 'axios'
 import OgcProcessSelect from './OgcProcessSelect.vue'
 import OgcProcessForm from './OgcProcessForm.vue'
 import ResultArtifactsList from './ResultArtifactsList.vue'
+import LinearProgress from '@/ui/LinearProgress.vue'
 import { extractResultsUrl, sleep } from './utils'
 import { POLL_INTERVAL_MS, POLL_MAX_RETRIES, FAILURE_STATUSES } from './schema'
 
 export default {
-  components: { OgcProcessSelect, OgcProcessForm, ResultArtifactsList },
+  components: { OgcProcessSelect, OgcProcessForm, ResultArtifactsList, LinearProgress },
   props: {
     baseUrl: {
       type: String,
@@ -86,7 +99,9 @@ export default {
       result: null,
       executeError: null,
       polling: false,
-      pollingStatus: ''
+      pollingElapsed: 0,
+      jobProgress: null,
+      jobMessage: ''
     }
   },
   watch: {
@@ -100,7 +115,9 @@ export default {
   methods: {
     async pollJobStatus (jobStatusUrl) {
       this.polling = true
-      this.pollingStatus = 'Running… (0s)'
+      this.pollingElapsed = 0
+      this.jobProgress = null
+      this.jobMessage = ''
       const startTime = Date.now()
       let attempt = 0
       try {
@@ -109,8 +126,7 @@ export default {
           await sleep(POLL_INTERVAL_MS)
           if (this._pollingCancelled) return
           attempt++
-          const elapsed = Math.round((Date.now() - startTime) / 1000)
-          this.pollingStatus = `Running… (${elapsed}s)`
+          this.pollingElapsed = Math.round((Date.now() - startTime) / 1000)
           let statusData
           try {
             const { data } = await axios.get(jobStatusUrl)
@@ -119,6 +135,12 @@ export default {
             const msg = err.response?.data?.detail || err.response?.data?.message || err.message
             this.executeError = `Polling error: ${msg}`
             return
+          }
+          if (statusData.progress != null) {
+            this.jobProgress = statusData.progress
+          }
+          if (statusData.message) {
+            this.jobMessage = statusData.message
           }
           const status = statusData.status
           if (status === 'successful') {
@@ -147,7 +169,9 @@ export default {
         this.executeError = `Job timed out after ${Math.round(POLL_MAX_RETRIES * POLL_INTERVAL_MS / 1000)}s`
       } finally {
         this.polling = false
-        this.pollingStatus = ''
+        this.pollingElapsed = 0
+        this.jobProgress = null
+        this.jobMessage = ''
       }
     },
 
@@ -240,12 +264,21 @@ export default {
     border-radius: 4px;
     font-size: 0.9em;
   }
-  .polling-status {
-    font-size: 0.85em;
-    opacity: 0.75;
-    gap: 4px;
-    .polling-text {
+  .job-progress {
+    gap: 2px;
+    .progress-footer {
+      font-size: 0.8em;
+      opacity: 0.75;
+      gap: 6px;
+    }
+    .progress-message {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .progress-meta {
       font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
     }
   }
 }
