@@ -34,9 +34,14 @@
           </v-btn>
         </div>
         <div class="result-body f-col">
-          <div v-if="result.ows_url" class="layer-added f-row-ac">
-            <v-icon name="layers" size="14" class="mr-1"/>
-            <span>Spatial layer added to map</span>
+          <div v-if="result.ows_url" class="layer-added f-col">
+            <div class="f-row-ac">
+              <v-icon name="layers" size="14" class="mr-1"/>
+              <span>Spatial layer added to map</span>
+            </div>
+            <button class="layers-tab-link" @click="$emit('switch-to-layers')">
+              View in Layers tab →
+            </button>
           </div>
           <span
             v-if="!result.ows_url && (!result.artifacts || !result.artifacts.length)"
@@ -209,10 +214,20 @@ export default {
       gap: 6px;
     }
     .layer-added {
-      gap: 6px;
+      gap: 4px;
       font-size: 0.85em;
       color: var(--color-green, #388e3c);
       font-weight: 500;
+      .layers-tab-link {
+        all: unset;
+        cursor: pointer;
+        font-size: 0.95em;
+        color: var(--color-primary);
+        text-decoration: underline;
+        &:hover {
+          opacity: 0.8;
+        }
+      }
     }
     .no-artifacts {
       font-size: 0.85em;

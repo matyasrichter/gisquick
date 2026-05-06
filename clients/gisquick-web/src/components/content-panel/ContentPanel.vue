@@ -70,7 +70,7 @@
                 :filter="filterMode ? filterText : ''"
                 :collapsed.sync="collapsedOverlays"
               />
-              <result-layers-group :attribute-table-disabled="attributeTableDisabled" @show-result-attribute-table="$emit('show-result-attribute-table', $event)"/>
+              <result-layers-group id="result-layers-group" :attribute-table-disabled="attributeTableDisabled" @show-result-attribute-table="$emit('show-result-attribute-table', $event)"/>
             </scroll-area>
           </template>
         </v-tabs>
@@ -86,6 +86,7 @@
             :base-url="ogcBaseUrl"
             @executed="$emit('executed', $event)"
             @identify-feature="$emit('identify-feature', $event)"
+            @switch-to-layers="switchToResultLayers"
           />
         </scroll-area>
       </template>
@@ -258,6 +259,13 @@ export default {
       if (!this.filterMode && this.filterText) {
         this.findLayersTree(this.filterText)
       }
+    },
+    switchToResultLayers () {
+      this.activeMainTab = 'overlays'
+      this.activeSecondaryTab = 'layers'
+      this.$nextTick(() => {
+        document.getElementById('result-layers-group')?.scrollIntoView({ behavior: 'smooth' })
+      })
     }
   }
 }
