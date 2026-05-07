@@ -148,12 +148,15 @@ export default {
     hasBaseLayers () {
       return this.project.baseLayers.list.length > 0
     },
+    hasProcessing () {
+      return !!this.project.config.processing
+    },
     tabsItems () {
       return [
         this.hasBaseLayers && { key: 'base', icon: 'base-layer', label: this.$gettext('Base Layers') },
         { key: 'overlays', icon: 'overlays', label: this.$gettext('Overlay Layers') },
         { key: 'legend', icon: 'legend', label: this.$gettext('Legend') },
-        { key: 'processing', icon: 'tools', label: this.$gettext('Processing') }
+        this.hasProcessing && { key: 'processing', icon: 'tools', label: this.$gettext('Processing') }
       ].filter(i => i)
     },
     overlaysTabs () {
