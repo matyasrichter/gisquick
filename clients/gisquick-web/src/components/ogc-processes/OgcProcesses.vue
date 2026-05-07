@@ -119,6 +119,9 @@ export default {
       this.jobProgress = null
       this.jobMessage = ''
       const startTime = Date.now()
+      const elapsedTimer = setInterval(() => {
+        this.pollingElapsed = Math.round((Date.now() - startTime) / 1000)
+      }, 1000)
       let attempt = 0
       try {
         while (attempt < POLL_MAX_RETRIES) {
@@ -126,7 +129,6 @@ export default {
           await sleep(POLL_INTERVAL_MS)
           if (this._pollingCancelled) return
           attempt++
-          this.pollingElapsed = Math.round((Date.now() - startTime) / 1000)
           let statusData
           try {
             const { data } = await axios.get(jobStatusUrl)
@@ -168,6 +170,7 @@ export default {
         }
         this.executeError = `Job timed out after ${Math.round(POLL_MAX_RETRIES * POLL_INTERVAL_MS / 1000)}s`
       } finally {
+        clearInterval(elapsedTimer)
         this.polling = false
         this.pollingElapsed = 0
         this.jobProgress = null
