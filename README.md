@@ -1,5 +1,9 @@
 # Gisquick
 
+## Live DEMO (processing module)
+Available at https://gisquick.mrichter.dev/?PROJECT=matyas/bees
+
+## Gisquick
 Gisquick (http://gisquick.org) is designed as an **open source
 platform for publishing geospatial data** in the sense of rapid
 sharing QGIS projects on the web. The platform consists of QGIS
