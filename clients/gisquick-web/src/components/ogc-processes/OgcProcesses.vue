@@ -31,7 +31,7 @@
                 :width="5"
               />
               <div class="progress-footer f-row-ac">
-                <span class="progress-message f-grow">{{ jobMessage || 'Executing…' }}</span>
+                <span class="progress-message f-grow" :title="jobMessage || 'Executing…'">{{ jobMessage || 'Executing…' }}</span>
                 <span class="progress-meta">{{ jobProgress !== null ? jobProgress + '% · ' : '' }}{{ pollingElapsed }}s</span>
               </div>
             </div>
