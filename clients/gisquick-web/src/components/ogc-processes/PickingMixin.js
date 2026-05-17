@@ -198,7 +198,8 @@ export default {
       const mapProj = this.$map.getView().getProjection()
       const geom = feature.getGeometry()
       const geometry = JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
-      const value = { type: 'Feature', geometry, properties: feature.getProperties() }
+      const { geometry: _geom, ...properties } = feature.getProperties()
+      const value = { type: 'Feature', geometry, properties }
       if (!this._drawLayer) {
         const source = new VectorSource()
         const layer = new OlVectorLayer({ source, zIndex: 999 })
@@ -216,11 +217,14 @@ export default {
       if (!this.multiPickedFeatures.length) return
       const mapProj = this.$map.getView().getProjection()
       const fmt = new GeoJSON()
-      const newFeatures = this.multiPickedFeatures.map(f => ({
-        type: 'Feature',
-        geometry: JSON.parse(fmt.writeGeometry(f.getGeometry(), { dataProjection: 'EPSG:4326', featureProjection: mapProj })),
-        properties: f.getProperties()
-      }))
+      const newFeatures = this.multiPickedFeatures.map(f => {
+        const { geometry: _g, ...properties } = f.getProperties()
+        return {
+          type: 'Feature',
+          geometry: JSON.parse(fmt.writeGeometry(f.getGeometry(), { dataProjection: 'EPSG:4326', featureProjection: mapProj })),
+          properties
+        }
+      })
       const existing = this.formData[name]
       const prior = existing?.type === 'FeatureCollection' ? (existing.features || []) : []
       this.$set(this.formData, name, { type: 'FeatureCollection', features: [...prior, ...newFeatures] })
@@ -290,11 +294,14 @@ export default {
 
         if (!features.length) return
         const fmt = new GeoJSON()
-        const featureList = features.map(f => ({
-          type: 'Feature',
-          geometry: JSON.parse(fmt.writeGeometry(f.getGeometry(), { dataProjection: 'EPSG:4326', featureProjection: mapProj })),
-          properties: f.getProperties()
-        }))
+        const featureList = features.map(f => {
+          const { geometry: _g, ...properties } = f.getProperties()
+          return {
+            type: 'Feature',
+            geometry: JSON.parse(fmt.writeGeometry(f.getGeometry(), { dataProjection: 'EPSG:4326', featureProjection: mapProj })),
+            properties
+          }
+        })
         this.$set(this.formData, name, { type: 'FeatureCollection', features: featureList })
         if (!this._drawLayer) {
           const source = new VectorSource()

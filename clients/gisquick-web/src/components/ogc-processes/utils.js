@@ -61,10 +61,13 @@ export function olFeaturesToGeoJsonCollection (features, mapProj) {
   const fmt = new GeoJSON()
   return {
     type: 'FeatureCollection',
-    features: features.map(f => ({
-      type: 'Feature',
-      geometry: JSON.parse(fmt.writeGeometry(f.getGeometry(), { dataProjection: 'EPSG:4326', featureProjection: mapProj })),
-      properties: f.getProperties()
-    }))
+    features: features.map(f => {
+      const { geometry: _g, ...properties } = f.getProperties()
+      return {
+        type: 'Feature',
+        geometry: JSON.parse(fmt.writeGeometry(f.getGeometry(), { dataProjection: 'EPSG:4326', featureProjection: mapProj })),
+        properties
+      }
+    })
   }
 }
