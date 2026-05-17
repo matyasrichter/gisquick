@@ -35,6 +35,9 @@
                 <span class="progress-meta">{{ jobProgress !== null ? jobProgress + '% · ' : '' }}{{ pollingElapsed }}s</span>
               </div>
             </div>
+            <v-btn class="icon small" title="Cancel" @click="cancelPolling">
+              <v-icon name="x" size="16"/>
+            </v-btn>
           </template>
         </div>
       </div>
@@ -208,6 +211,10 @@ export default {
       } finally {
         this.executing = false
       }
+    },
+
+    cancelPolling () {
+      this._pollingCancelled = true
     },
 
     clearResult () {
