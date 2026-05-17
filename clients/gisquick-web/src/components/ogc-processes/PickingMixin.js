@@ -197,7 +197,8 @@ export default {
     applyPendingFeature (name, def, feature) {
       const mapProj = this.$map.getView().getProjection()
       const geom = feature.getGeometry()
-      const value = JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
+      const geometry = JSON.parse(new GeoJSON().writeGeometry(geom, { dataProjection: 'EPSG:4326', featureProjection: mapProj }))
+      const value = { type: 'Feature', geometry, properties: feature.getProperties() }
       if (!this._drawLayer) {
         const source = new VectorSource()
         const layer = new OlVectorLayer({ source, zIndex: 999 })
